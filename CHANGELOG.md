@@ -5,6 +5,17 @@ All notable changes to the APIOps CLI are documented in this file.
 The format is inspired by [Keep a Changelog](https://keepachangelog.com/en/1.1.0/).
 This project uses [Semantic Versioning](https://semver.org/) with alpha pre-release tags.
 
+## [0.4.0-alpha.2] — 2026-07-02
+
+### Bug Fixes
+
+- **Publish no longer aborts on auto-generated logger-credential named values** — the pre-flight secret-redaction scan added in v0.4.0-alpha.0 was incorrectly flagging APIM-managed logger credential named values (which legitimately contain `*** REDACTED ***` markers from the service). `apiops publish` now ignores those auto-generated named values so publishes proceed without manual intervention ([#220](https://github.com/Azure/apiops-cli/pull/220))
+
+### Docs & Testing
+
+- **Added missing `--artifact-dir` flag to the `apiops init` README table** — the flag was already implemented but wasn't documented in the README options reference ([#217](https://github.com/Azure/apiops-cli/pull/217))
+- **Polished the environment-overrides and filter guides plus the shipped Copilot prompt templates** — added a fallback paragraph pointing users who skipped `apiops init` to the prompt source files on GitHub, and cleaned up formatting in `apiops-configure-filter.prompt.md` and `apiops-configure-overrides.prompt.md` (follow-up to #183) ([#196](https://github.com/Azure/apiops-cli/pull/196))
+
 ## [0.4.0-alpha.0] — 2026-07-01
 
 ### Breaking Changes
@@ -155,6 +166,7 @@ This project uses [Semantic Versioning](https://semver.org/) with alpha pre-rele
 - **Initial release** — core extract, publish, and init commands for Azure API Management ([#15](https://github.com/Azure/apiops-cli/pull/15))
 - **CodeQL analysis** — automated security scanning workflow ([#19](https://github.com/Azure/apiops-cli/pull/19))
 
+[0.4.0-alpha.2]: https://github.com/Azure/apiops-cli/compare/v0.4.0-alpha.0...v0.4.0-alpha.2
 [0.4.0-alpha.0]: https://github.com/Azure/apiops-cli/compare/v0.3.0-alpha.0...v0.4.0-alpha.0
 [0.3.0-alpha.0]: https://github.com/Azure/apiops-cli/compare/v0.2.1-alpha.0...v0.3.0-alpha.0
 [0.2.1-alpha.0]: https://github.com/Azure/apiops-cli/compare/v0.2.0-alpha.0...v0.2.1-alpha.0
