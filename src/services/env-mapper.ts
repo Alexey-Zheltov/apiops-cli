@@ -3,14 +3,10 @@
 
 import { ResourceType } from '../models/resource-types.js';
 import type { ResourceDescriptor } from '../models/types.js';
-import type { OverrideConfig } from '../models/config.js';
+import type { EnvironmentOverride, OverrideConfig } from '../models/config.js';
 
-export interface EnvironmentOverride {
-  namePrefix?: string;
-  nameSuffix?: string;
-  appliesTo?: ResourceType[];
-  apiPathPrefix?: string;
-}
+// Re-export for callers that previously imported EnvironmentOverride from here.
+export type { EnvironmentOverride } from '../models/config.js';
 
 export interface EnvMapping {
   prefix: string;
@@ -108,8 +104,15 @@ export function buildEnvMapping(env: EnvironmentOverride | undefined): EnvMappin
     return undefined;
   }
 
+  // Convert string[] → ReadonlySet<ResourceType>, filtering out anything that isn't
+  // a valid ResourceType. The validator surfaces a hard error for unknown types before
+  // reaching this code, so in practice env.appliesTo is either undefined or all-valid.
+  // The filter is a defensive fallback that keeps the internal set type-safe.
+  const validTypes = new Set(Object.values(ResourceType) as string[]);
   const appliesTo: ReadonlySet<ResourceType> =
-    env.appliesTo !== undefined ? new Set(env.appliesTo) : DEFAULT_APPLIES_TO;
+    env.appliesTo !== undefined
+      ? new Set(env.appliesTo.filter((t) => validTypes.has(t)) as ResourceType[])
+      : DEFAULT_APPLIES_TO;
 
   return apiPathPrefix !== undefined
     ? { prefix, suffix, appliesTo, apiPathPrefix }
@@ -119,7 +122,7 @@ export function buildEnvMapping(env: EnvironmentOverride | undefined): EnvMappin
 /** Convenience: extract environment block from OverrideConfig then buildEnvMapping. */
 export function buildEnvMappingFromOverrides(overrides: OverrideConfig | undefined): EnvMapping | undefined {
   if (overrides === undefined) return undefined;
-  return buildEnvMapping(overrides.environment as EnvironmentOverride | undefined);
+  return buildEnvMapping(overrides.environment);
 }
 
 /**

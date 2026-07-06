@@ -20,7 +20,7 @@
  * and the config is later changed to have no prefix (or a different prefix), the
  * old affixed resources will no longer match the namespace and will be silently
  * skipped rather than deleted.  The user must manually clean up orphaned resources
- * in that scenario. 
+ * in that scenario.
  */
 
 import type { IApimClient } from '../clients/iapim-client.js';

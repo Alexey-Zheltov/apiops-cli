@@ -513,7 +513,8 @@ describe('publish-service', () => {
       expect(config.knownArtifactSets?.namedValues.has('nv-changed')).toBe(true);
     });
 
-    it('should pass commit-scoped deleted descriptors to dry-run report', async () => {      const client = createMockClient();
+    it('should pass commit-scoped deleted descriptors to dry-run report', async () => {
+      const client = createMockClient();
       const store = createMockStore([]);
 
       vi.mocked(computeGitDiff).mockResolvedValue({
