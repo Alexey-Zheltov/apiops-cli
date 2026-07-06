@@ -253,6 +253,64 @@ describe('validateAndBuildEnvMapping', () => {
     expect(apiWarn).toBeUndefined();
   });
 
+  // ─── Warn: affixed name exceeds APIM 80-char limit ───────────────────────
+
+  it('affixed name exceeds 80 chars → warning with name, length, and type', () => {
+    const overrides: OverrideConfig = {
+      environment: { namePrefix: 'production-us-east-', nameSuffix: '-v2-stable' },
+    };
+    // canonical is 60 chars → 60 + 19 (prefix) + 10 (suffix) = 89
+    const longCanonical = 'enterprise-billing-reconciliation-service-consolidated-api-x';
+    expect(longCanonical.length).toBe(60);
+    const descriptors: ResourceDescriptor[] = [makeDescriptor(ResourceType.Api, longCanonical)];
+    const config = makeConfig(overrides);
+    validateAndBuildEnvMapping(overrides, descriptors, config);
+
+    const lengthWarn = warnSpy.mock.calls.find((c) =>
+      String(c[0]).includes('exceeding APIM\'s 80-character')
+    );
+    expect(lengthWarn).toBeDefined();
+    expect(String(lengthWarn![0])).toContain(`production-us-east-${longCanonical}-v2-stable`);
+    expect(String(lengthWarn![0])).toContain('89 characters');
+    expect(String(lengthWarn![0])).toContain('Api');
+  });
+
+  it('affixed name exactly 80 chars → no length warning', () => {
+    const overrides: OverrideConfig = {
+      environment: { namePrefix: 'dev-' }, // 4 chars
+    };
+    const canonical = 'a'.repeat(76); // 4 + 76 = 80
+    const descriptors: ResourceDescriptor[] = [makeDescriptor(ResourceType.Api, canonical)];
+    const config = makeConfig(overrides);
+    validateAndBuildEnvMapping(overrides, descriptors, config);
+
+    const lengthWarn = warnSpy.mock.calls.find((c) =>
+      String(c[0]).includes('80-character')
+    );
+    expect(lengthWarn).toBeUndefined();
+  });
+
+  it('affixed name would exceed 80 chars but type not in appliesTo → no warning', () => {
+    const overrides: OverrideConfig = {
+      environment: {
+        namePrefix: 'production-us-east-',
+        nameSuffix: '-v2-stable',
+        appliesTo: ['Api'], // Product not in appliesTo
+      },
+    };
+    const longCanonical = 'a'.repeat(60);
+    const descriptors: ResourceDescriptor[] = [
+      makeDescriptor(ResourceType.Product, longCanonical),
+    ];
+    const config = makeConfig(overrides);
+    validateAndBuildEnvMapping(overrides, descriptors, config);
+
+    const lengthWarn = warnSpy.mock.calls.find((c) =>
+      String(c[0]).includes('80-character')
+    );
+    expect(lengthWarn).toBeUndefined();
+  });
+
   // ─── Warn: override entry references unknown resource ────────────────────
 
   it('apis override references name not in artifact descriptors → warning logged', () => {

@@ -131,6 +131,26 @@ export function validateAndBuildEnvMapping(
     }
   }
 
+  // --- Warn if any affixed name would exceed APIM's 80-character limit ---
+  // Top-level APIM resource names (APIs, NamedValues, Products, Backends, etc.)
+  // are capped at 80 characters. If prefix + canonical + suffix crosses that
+  // threshold, the ARM PUT will fail mid-publish with a cryptic 400 that does
+  // not name the affix as the cause. Surface it up front instead.
+  for (const d of artifactDescriptors) {
+    if (d.nameParts.length === 0) continue;
+    if (!mapping.appliesTo.has(d.type)) continue;
+    const canonical = d.nameParts[0];
+    if (canonical === undefined) continue;
+    const deployedLen = mapping.prefix.length + canonical.length + mapping.suffix.length;
+    if (deployedLen > 80) {
+      logger.warn(
+        `[publish] Affixed name "${mapping.prefix}${canonical}${mapping.suffix}" would be ${deployedLen} characters ` +
+          `for ${d.type}, exceeding APIM's 80-character resource name limit. Shorten the canonical name or the affix ` +
+          `before publishing.`
+      );
+    }
+  }
+
   // --- Warn for override entries that don't match any artifact descriptor of that type ---
   for (const [sectionKey, resourceType] of OVERRIDE_SECTION_TYPES) {
     const section = overrides[sectionKey];
