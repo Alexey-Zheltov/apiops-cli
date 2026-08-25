@@ -494,7 +494,7 @@ function hasSchemaBoundRepresentations(patchProps: Record<string, unknown>): boo
   const hasRef = (items: unknown): boolean =>
     Array.isArray(items) &&
     items.some(
-      (item) =>
+      (item: unknown) =>
         item !== null &&
         typeof item === 'object' &&
         (Object.hasOwn(item, 'schemaId') || Object.hasOwn(item, 'typeName')) &&
