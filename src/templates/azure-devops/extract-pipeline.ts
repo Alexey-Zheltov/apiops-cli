@@ -97,7 +97,7 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        npx @peterhauge/apiops-cli extract \\
+        npx @azure-tools/apiops-cli extract \\
           --resource-group "$(APIM_RESOURCE_GROUP)" \\
           --service-name "$(APIM_SERVICE_NAME)" \\
           --output ${config.artifactDir} \\
@@ -111,7 +111,7 @@ steps:
       scriptType: 'bash'
       scriptLocation: 'inlineScript'
       inlineScript: |
-        npx @peterhauge/apiops-cli extract \\
+        npx @azure-tools/apiops-cli extract \\
           --resource-group "$(APIM_RESOURCE_GROUP)" \\
           --service-name "$(APIM_SERVICE_NAME)" \\
           --output ${config.artifactDir} \\

@@ -1,6 +1,6 @@
 <#
 .SYNOPSIS
-    Ensures the apiops CLI (@peterhauge/apiops-cli) is installed at the requested
+    Ensures the apiops CLI (@azure-tools/apiops-cli) is installed at the requested
     version, installing or upgrading it via npm when necessary.
 
 .DESCRIPTION
@@ -14,7 +14,7 @@
     APIOPS_PATH and APIOPS_VERSION.
 
 .PARAMETER PackageName
-    The npm package name. Defaults to '@peterhauge/apiops-cli'.
+    The npm package name. Defaults to '@azure-tools/apiops-cli'.
 
 .EXAMPLE
     .\Check-ApiopsCliVersion.ps1
@@ -28,7 +28,7 @@
 [CmdletBinding()]
 param(
     [string]$ApiopsVersion = 'latest',
-    [string]$PackageName   = '@peterhauge/apiops-cli',
+    [string]$PackageName   = '@azure-tools/apiops-cli',
     # npm registry URL used for the direct connectivity check (curl).
     [string]$RegistryUrl   = 'https://registry.npmjs.org',
     # Deprecated / kept for backward compatibility with existing callers. Behaviour
