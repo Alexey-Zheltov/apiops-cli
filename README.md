@@ -45,8 +45,10 @@ Extract APIM service configuration to local artifact files.
 | `--resource-group <rg>` | *(required)* | Azure resource group |
 | `--service-name <name>` | *(required)* | APIM service name |
 | `--output <dir>` | `./apim-artifacts` | Output directory |
-| `--filter <path>` | | Extract only matching resources |
+| `--filter <path>` | | Extract matching resources; supports wildcards and `!` exclusions |
 | `--no-transitive` | | Skip transitive dependencies |
+
+Filter files support exact names, wildcards, quoted `!`-prefixed exclusions, and the singleton `policies` key. See the [extract command filter reference](docs/commands/extract.md#filter-configuration) for all 17 filter keys and the [filtering guide](docs/guides/filtering-resources.md) for detailed examples.
 
 ```bash
 apiops extract --help
