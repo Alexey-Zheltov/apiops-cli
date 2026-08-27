@@ -64,3 +64,4 @@ tests/integration/**/bicep/source-apim-post-activation.bicep
 # Temporary files created by build process
 src/templates/generated/
 .squad/.cache/
+/.vs
