@@ -124,6 +124,7 @@ describe('azure-devops/extract-pipeline', () => {
       const pipeline = generateExtractPipeline(defaultConfig);
       expect(pipeline).toContain('npm ci');
       expect(pipeline).toContain('npx @azure-tools/apiops-cli extract');
+      expect(pipeline).toContain('--remove-stale');
     });
   });
 });
