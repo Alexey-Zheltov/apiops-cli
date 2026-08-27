@@ -140,7 +140,7 @@ This project uses [Semantic Versioning](https://semver.org/) with alpha pre-rele
 ### Features
 
 - **Azure DevOps `init`** — interactive Copilot prompt with managed identity / WIF support ([#31](https://github.com/Azure/apiops-cli/pull/31))
-- **Public npm registry support** — install directly from `@peterhauge/apiops-cli` on npmjs.com ([#28](https://github.com/Azure/apiops-cli/pull/28))
+- **Public npm registry support** — install directly from `@azure-tools/apiops-cli` on npmjs.com ([#28](https://github.com/Azure/apiops-cli/pull/28))
 
 ### Bug Fixes
 

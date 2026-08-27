@@ -29,7 +29,7 @@ flowchart LR
 ## Install
 
 ```bash
-npm install -g @peterhauge/apiops-cli
+npm install -g @azure-tools/apiops-cli
 ```
 
 Requires Node.js 22 or later.
