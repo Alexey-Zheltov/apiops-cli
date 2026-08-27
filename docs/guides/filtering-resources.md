@@ -200,16 +200,14 @@ namedValues:
   - '!keyvault-*'
 ```
 
-Exclusions work anywhere a string list is accepted, including sub-filter fields inside `apiSubFilters` and `workspaceSubFilters`:
+Exclusions work anywhere a string list is accepted, including nested API and workspace sub-filter entries:
 
 ```yaml
 apis:
-  - 'my-api'
-apiSubFilters:
-  my-api:
-    operations:
-      - 'get-*'
-      - '!get-internal-*'   # keep all get-* operations except internal ones
+  - 'my-api':
+      operations:
+        - 'get-*'
+        - '!get-internal-*'   # keep all get-* operations except internal ones
 ```
 
 ---
@@ -260,7 +258,7 @@ Supported workspace sub-filter keys: `apis`, `backends`, `diagnostics`, `groups`
 
 ---
 
-## All 16 Filterable Resource Types
+## All 17 Filterable Resource Types
 
 | Filter Field | APIM Resource | Example Values |
 |-------------|---------------|----------------|
@@ -401,7 +399,7 @@ backends:
 
 ### Full Extract Minus Specific Resources
 
-There is no "exclude" syntax. To extract everything except certain resources, list all the resources you _do_ want. For large instances, it's often easier to extract everything and use `.gitignore` or separate branches to manage visibility.
+Use quoted `!`-prefixed entries to exclude specific resources. A list containing only exclusions includes every resource that does not match them; combine `'*'` with exclusions when you want to make the include-all intent explicit. See [Excluding resources with `!`](#excluding-resources-with-) for examples and matching rules.
 
 ### Pattern-Based Team Filtering
 
