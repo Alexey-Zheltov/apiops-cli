@@ -132,6 +132,30 @@ apiops init \
   --environments dev,prod
 ```
 
+### `apiops apic`
+
+Back up and restore Azure API Center (`Microsoft.ApiCenter`) services. This command group is separate from the Azure API Management `extract` and `publish` commands.
+
+| Command | Description |
+|---------|-------------|
+| `apiops apic extract` | Extract API Center configuration and API definition specifications to `./apic-artifacts` |
+| `apiops apic publish` | Publish API Center artifacts and specifications to an API Center service |
+
+```bash
+# Back up an API Center service
+apiops apic extract \
+  --resource-group <rg> \
+  --service-name <name>
+
+# Preview a restore without applying changes
+apiops apic publish \
+  --resource-group <rg> \
+  --service-name <name> \
+  --dry-run
+```
+
+See the [`apiops apic` command reference](docs/commands/apic.md) for flags, workspace extraction, and specification options.
+
 ## Global options
 
 | Option | Default | Description |
