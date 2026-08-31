@@ -207,9 +207,18 @@ export class ApimClient implements IApimClient {
 
         return response;
       } catch (error) {
-        // Do not retry client errors (4xx) — they are deterministic, not transient.
-        // 429 rate-limiting is already handled above and never reaches here.
-        if (error instanceof HttpError && error.status >= 400 && error.status < 500) {
+        // APIM reports operations blocked by an API's in-progress async operation
+        // as a transient 409. Other client errors are deterministic.
+        const isPessimisticConcurrencyConflict =
+          error instanceof HttpError &&
+          error.status === 409 &&
+          error.code === 'PessimisticConcurrencyConflict';
+        if (
+          error instanceof HttpError &&
+          error.status >= 400 &&
+          error.status < 500 &&
+          !isPessimisticConcurrencyConflict
+        ) {
           throw error;
         }
         if (attempt >= ApimClient.MAX_RETRIES) {

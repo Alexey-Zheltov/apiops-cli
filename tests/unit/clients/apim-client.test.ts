@@ -887,6 +887,72 @@ describe('ApimClient HTTP 429 rate limiting', () => {
   });
 });
 
+describe('ApimClient HTTP 409 conflict handling', () => {
+  let client: ApimClient;
+  let fetchSpy: ReturnType<typeof vi.fn>;
+
+  beforeEach(() => {
+    client = new ApimClient();
+    fetchSpy = vi.fn();
+    vi.stubGlobal('fetch', fetchSpy);
+
+    /* eslint-disable @typescript-eslint/no-explicit-any */
+    vi.spyOn(client as any, 'getToken').mockResolvedValue('fake-token');
+    vi.spyOn(client as any, 'delay').mockResolvedValue(undefined);
+    /* eslint-enable @typescript-eslint/no-explicit-any */
+  });
+
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it('should retry PessimisticConcurrencyConflict responses on PUT operations', async () => {
+    fetchSpy
+      .mockResolvedValueOnce(
+        makeResponse(409, {
+          error: {
+            code: 'PessimisticConcurrencyConflict',
+            message: 'Operation on the API is in progress',
+          },
+        })
+      )
+      .mockResolvedValueOnce(makeResponse(200, { name: 'my-api' }));
+
+    const descriptor = {
+      type: ResourceType.Api,
+      nameParts: ['my-api'],
+    };
+
+    await expect(client.putResource(testContext, descriptor, {}))
+      .resolves.toEqual({ name: 'my-api' });
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+  });
+
+  it('should not retry unrelated HTTP 409 responses', async () => {
+    fetchSpy.mockResolvedValueOnce(
+      makeResponse(409, {
+        error: {
+          code: 'AnotherConflict',
+          message: 'A non-transient conflict',
+        },
+      })
+    );
+
+    const descriptor = {
+      type: ResourceType.Api,
+      nameParts: ['my-api'],
+    };
+
+    await expect(client.putResource(testContext, descriptor, {}))
+      .rejects.toMatchObject({
+        status: 409,
+        code: 'AnotherConflict',
+      });
+    expect(fetchSpy).toHaveBeenCalledTimes(1);
+  });
+});
+
 describe('ApimClient.getApiSpecification', () => {
   let client: ApimClient;
   let fetchSpy: ReturnType<typeof vi.fn>;
