@@ -344,19 +344,23 @@ async function executePuts(
       }
     } else if (tier === 2) {
       const tier2Descriptors = filterApiRevisionsHandledByRootApis(descriptors);
+      const apiDescriptors = tier2Descriptors.filter((d) => d.type === ResourceType.Api);
+      const nonApiDescriptors = tier2Descriptors.filter((d) => d.type !== ResourceType.Api);
 
-      const { mcpApis, regularTier2 } = await splitMcpApis(
+      const { mcpApis, regularTier2: regularApis } = await splitMcpApis(
         store,
         config.sourceDir,
-        tier2Descriptors
+        apiDescriptors
       );
 
-      await publishAndOutput(client, store, context, config, regularTier2, results);
+      await publishAndOutput(client, store, context, config, regularApis, results);
 
       if (mcpApis.length > 0) {
-        logger.debug(`Publishing ${mcpApis.length} MCP API resource(s) after regular tier 2 resources`);
+        logger.debug(`Publishing ${mcpApis.length} MCP API resource(s) after regular APIs`);
         await publishAndOutput(client, store, context, config, mcpApis, results);
       }
+
+      await publishAndOutput(client, store, context, config, nonApiDescriptors, results);
     } else {
       // For tiers 3/4, exclude child resources whose parent is being published
       // in tier 2 (publishApi/publishProduct handle their children internally).
