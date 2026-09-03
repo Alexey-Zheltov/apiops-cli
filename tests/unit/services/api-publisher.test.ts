@@ -137,6 +137,78 @@ describe('api-publisher', () => {
       );
     });
 
+    it('checks existence and appends ;rev=N using the env-mapped target name', async () => {
+      const client = createMockClient();
+      client.getResource.mockResolvedValue(undefined);
+      const store = createMockStore([]);
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && d.nameParts[0] === 'orders-api') {
+          return { name: 'orders-api', properties: { apiRevision: '3', isCurrent: true } };
+        }
+        return null;
+      });
+
+      const apiDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+      };
+      const config: PublishConfig = {
+        ...testConfig,
+        envMapping: {
+          prefix: 'dev-',
+          suffix: '-eu',
+          appliesTo: new Set([ResourceType.Api]),
+        },
+      };
+
+      await publishApi(client, store, testContext, apiDescriptor, config);
+
+      // Existence check uses the mapped name, not the canonical one
+      expect(client.getResource).toHaveBeenCalledWith(
+        testContext,
+        expect.objectContaining({ nameParts: ['dev-orders-api-eu'] })
+      );
+      // ;rev=N is appended after affixing so the suffix cannot corrupt it
+      expect(client.putResource).toHaveBeenCalledWith(
+        testContext,
+        expect.objectContaining({ nameParts: ['dev-orders-api-eu;rev=3'] }),
+        expect.anything()
+      );
+    });
+
+    it('fails the API publish when a revision publish fails', async () => {
+      const client = createMockClient();
+      client.getResource.mockResolvedValue(undefined);
+      const revisionDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api;rev=2'],
+      };
+      const store = createMockStore([revisionDescriptor]);
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && d.nameParts[0] === 'orders-api') {
+          return { name: 'orders-api', properties: { apiRevision: '3', isCurrent: true } };
+        }
+        return null;
+      });
+      mockPublishResource.mockResolvedValue({
+        descriptor: revisionDescriptor,
+        status: 'failed',
+        action: 'noop',
+        error: new Error('HTTP 400: ValidationError'),
+      });
+
+      const apiDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+      };
+
+      const result = await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      expect(result.status).toBe('failed');
+      expect(result.error?.message).toContain('orders-api;rev=2');
+      expect(result.error?.message).toContain('HTTP 400: ValidationError');
+    });
+
     it('keeps the plain root PUT when the API already exists on the target', async () => {
       const client = createMockClient();
       client.getResource.mockResolvedValue({ name: 'orders-api' }); // exists
