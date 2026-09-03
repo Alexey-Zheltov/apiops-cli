@@ -14,9 +14,9 @@ import type { PublishConfig } from '../models/config.js';
 import * as yaml from 'js-yaml';
 import { ResourceType } from '../models/resource-types.js';
 import {
-  hasExplicitPropertyOverride,
   normalizeApiAuthenticationSettings,
   normalizeMcpToolOperationIds,
+  prefersLegacyAuthOverride,
   publishResource,
   type ResourcePublishResult,
 } from './resource-publisher.js';
@@ -243,9 +243,8 @@ async function publishRootApi(
   // Apply overrides
   json = applyOverrides(descriptor, json, config.overrides);
   json = normalizeApiAuthenticationSettings(json, {
-    preferLegacyFields: hasExplicitPropertyOverride(
+    preferLegacyFields: prefersLegacyAuthOverride(
       getNamePart(descriptor.nameParts, 0),
-      'authenticationSettings',
       config.overrides?.apis
     ),
   });

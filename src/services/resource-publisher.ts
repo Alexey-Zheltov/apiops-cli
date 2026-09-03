@@ -64,13 +64,43 @@ export function hasExplicitPropertyOverride(
   propertyKey: string,
   section: OverrideSection | undefined,
 ): boolean {
-  if (!section) return false;
+  return getExplicitPropertyOverride(resourceName, propertyKey, section) !== undefined;
+}
+
+/** Return the explicit override value for a property, if any (case-insensitive name match). */
+function getExplicitPropertyOverride(
+  resourceName: string,
+  propertyKey: string,
+  section: OverrideSection | undefined,
+): unknown {
+  if (!section) return undefined;
   const lowerName = resourceName.toLowerCase();
   const matchingKey = Object.keys(section).find((k) => k.toLowerCase() === lowerName);
-  if (!matchingKey) return false;
+  if (!matchingKey) return undefined;
   const properties = section[matchingKey]?.properties as Record<string, unknown> | undefined;
-  if (!properties) return false;
-  return Object.hasOwn(properties, propertyKey);
+  if (!properties || !Object.hasOwn(properties, propertyKey)) return undefined;
+  return properties[propertyKey];
+}
+
+/**
+ * True when the environment override explicitly supplies the LEGACY auth
+ * representation (oAuth2/openid) without also supplying the collections.
+ * Collection or metadata-only overrides keep the default collection precedence.
+ */
+export function prefersLegacyAuthOverride(
+  resourceName: string,
+  section: OverrideSection | undefined,
+): boolean {
+  const overrideAuth = getExplicitPropertyOverride(resourceName, 'authenticationSettings', section);
+  if (!overrideAuth || typeof overrideAuth !== 'object') return false;
+  const auth = overrideAuth as Record<string, unknown>;
+
+  const suppliesLegacy = auth.oAuth2 != null || auth.openid != null;
+  const suppliesCollections =
+    (Array.isArray(auth.oAuth2AuthenticationSettings) && auth.oAuth2AuthenticationSettings.length > 0) ||
+    (Array.isArray(auth.openidAuthenticationSettings) && auth.openidAuthenticationSettings.length > 0);
+
+  return suppliesLegacy && !suppliesCollections;
 }
 
 /**
@@ -364,9 +394,8 @@ export async function publishResource(
     if (descriptor.type === ResourceType.Api) {
       const apiName = getNamePart(descriptor.nameParts, 0);
       json = normalizeApiAuthenticationSettings(json, {
-        preferLegacyFields: hasExplicitPropertyOverride(
+        preferLegacyFields: prefersLegacyAuthOverride(
           apiName.split(';rev=')[0] ?? apiName,
-          'authenticationSettings',
           config.overrides?.apis
         ),
       });

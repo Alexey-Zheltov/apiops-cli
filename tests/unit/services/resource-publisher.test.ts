@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import {
   publishResource,
   normalizeApiAuthenticationSettings,
+  prefersLegacyAuthOverride,
 } from '../../../src/services/resource-publisher.js';
 import { ResourceType } from '../../../src/models/resource-types.js';
 import { ApimServiceContext, ResourceDescriptor } from '../../../src/models/types.js';
@@ -1384,6 +1385,62 @@ describe('resource-publisher', () => {
       expect(auth.oAuth2AuthenticationSettings).toHaveLength(1);
       expect(auth.oAuth2).toBeUndefined();
       expect(auth.openid).toBeUndefined();
+    });
+  });
+
+  describe('prefersLegacyAuthOverride', () => {
+    it('is true when the override supplies only legacy fields', () => {
+      const section = {
+        'my-api': {
+          properties: {
+            authenticationSettings: { oAuth2: { authorizationServerId: 'override-server' } },
+          },
+        },
+      };
+      expect(prefersLegacyAuthOverride('my-api', section)).toBe(true);
+    });
+
+    it('is false when the override supplies collections', () => {
+      const section = {
+        'my-api': {
+          properties: {
+            authenticationSettings: {
+              oAuth2AuthenticationSettings: [{ authorizationServerId: 'override-server' }],
+            },
+          },
+        },
+      };
+      expect(prefersLegacyAuthOverride('my-api', section)).toBe(false);
+    });
+
+    it('is false when the override supplies both representations', () => {
+      const section = {
+        'my-api': {
+          properties: {
+            authenticationSettings: {
+              oAuth2: { authorizationServerId: 'legacy' },
+              oAuth2AuthenticationSettings: [{ authorizationServerId: 'a' }, { authorizationServerId: 'b' }],
+            },
+          },
+        },
+      };
+      expect(prefersLegacyAuthOverride('my-api', section)).toBe(false);
+    });
+
+    it('is false for metadata-only authentication overrides', () => {
+      const section = {
+        'my-api': {
+          properties: {
+            authenticationSettings: { returnProtectedResourceMetadata: true },
+          },
+        },
+      };
+      expect(prefersLegacyAuthOverride('my-api', section)).toBe(false);
+    });
+
+    it('is false when there is no authenticationSettings override', () => {
+      expect(prefersLegacyAuthOverride('my-api', undefined)).toBe(false);
+      expect(prefersLegacyAuthOverride('my-api', { 'my-api': { properties: { path: '/x' } } })).toBe(false);
     });
   });
 });
