@@ -13,7 +13,15 @@ import { LogLevel } from '../../../src/lib/logger.js';
 // Mock service dependencies
 vi.mock('../../../src/services/git-diff-service.js');
 vi.mock('../../../src/services/dry-run-reporter.js');
-vi.mock('../../../src/services/delete-unmatched-service.js');
+vi.mock('../../../src/services/delete-unmatched-service.js', async () => {
+  const actual = await vi.importActual<typeof import('../../../src/services/delete-unmatched-service.js')>(
+    '../../../src/services/delete-unmatched-service.js'
+  );
+  return {
+    ...actual,
+    computeDeleteActions: vi.fn(),
+  };
+});
 vi.mock('../../../src/services/api-publisher.js');
 vi.mock('../../../src/services/product-publisher.js');
 
