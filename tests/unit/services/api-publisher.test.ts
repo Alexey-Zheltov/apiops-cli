@@ -176,6 +176,42 @@ describe('api-publisher', () => {
       );
     });
 
+    it('uses the deployed name for every root PUT when the API already exists', async () => {
+      const client = createMockClient();
+      client.getResource.mockResolvedValue({ name: 'dev-orders-api-eu' }); // exists on target
+      const store = createMockStore([]);
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && d.nameParts[0] === 'orders-api') {
+          return { name: 'orders-api', properties: { apiRevision: '3', isCurrent: true } };
+        }
+        return null;
+      });
+
+      const apiDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+      };
+      const config: PublishConfig = {
+        ...testConfig,
+        envMapping: {
+          prefix: 'dev-',
+          suffix: '-eu',
+          appliesTo: new Set([ResourceType.Api]),
+        },
+      };
+
+      await publishApi(client, store, testContext, apiDescriptor, config);
+
+      // Every direct PUT must target the deployed name — never the canonical one
+      const putNames = client.putResource.mock.calls.map(
+        (c: unknown[]) => (c[1] as ResourceDescriptor).nameParts[0]
+      );
+      expect(putNames.length).toBeGreaterThan(0);
+      for (const name of putNames) {
+        expect(name).toBe('dev-orders-api-eu');
+      }
+    });
+
     it('fails the API publish when a revision publish fails', async () => {
       const client = createMockClient();
       client.getResource.mockResolvedValue(undefined);
