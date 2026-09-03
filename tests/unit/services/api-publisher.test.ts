@@ -112,6 +112,81 @@ describe('api-publisher', () => {
       );
     });
 
+    it('creates a fresh root API at its source revision number to avoid rev collisions', async () => {
+      const client = createMockClient();
+      client.getResource.mockResolvedValue(undefined); // API does not exist on target
+      const store = createMockStore([]);
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && d.nameParts[0] === 'orders-api') {
+          return { name: 'orders-api', properties: { apiRevision: '3', isCurrent: true } };
+        }
+        return null;
+      });
+
+      const apiDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+      };
+
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      expect(client.putResource).toHaveBeenCalledWith(
+        testContext,
+        expect.objectContaining({ nameParts: ['orders-api;rev=3'] }),
+        expect.objectContaining({ name: 'orders-api' })
+      );
+    });
+
+    it('keeps the plain root PUT when the API already exists on the target', async () => {
+      const client = createMockClient();
+      client.getResource.mockResolvedValue({ name: 'orders-api' }); // exists
+      const store = createMockStore([]);
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && d.nameParts[0] === 'orders-api') {
+          return { name: 'orders-api', properties: { apiRevision: '3', isCurrent: true } };
+        }
+        return null;
+      });
+
+      const apiDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+      };
+
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      expect(client.putResource).toHaveBeenCalledWith(
+        testContext,
+        expect.objectContaining({ nameParts: ['orders-api'] }),
+        expect.anything()
+      );
+    });
+
+    it('keeps the plain root PUT when the source revision is 1', async () => {
+      const client = createMockClient();
+      client.getResource.mockResolvedValue(undefined);
+      const store = createMockStore([]);
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && d.nameParts[0] === 'orders-api') {
+          return { name: 'orders-api', properties: { apiRevision: '1', isCurrent: true } };
+        }
+        return null;
+      });
+
+      const apiDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+      };
+
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      expect(client.putResource).toHaveBeenCalledWith(
+        testContext,
+        expect.objectContaining({ nameParts: ['orders-api'] }),
+        expect.anything()
+      );
+    });
+
     it('should publish MCP metadata from apiInformation.json and rewrite tool operationIds to the target service', async () => {
       const client = createMockClient();
       const store = createMockStore([]);

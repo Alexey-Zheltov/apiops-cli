@@ -111,6 +111,53 @@ const WIKI_TYPES = new Set<ResourceType>([
 ]);
 
 /**
+ * Normalize API authenticationSettings for PUT.
+ *
+ * APIM's GET returns both the legacy singular fields (oAuth2, openid) and the
+ * newer collections (oAuth2AuthenticationSettings, openidAuthenticationSettings),
+ * but PUT rejects payloads containing both: "Cannot use OAuth2AuthenticationSettings
+ * in combination with OAuth2 nor openid". Keep the collections (a superset of the
+ * singular fields) when they are non-empty; otherwise keep the singular fields and
+ * drop the empty collection keys.
+ */
+export function normalizeApiAuthenticationSettings(
+  json: Record<string, unknown>
+): Record<string, unknown> {
+  const props = json.properties as Record<string, unknown> | undefined;
+  const auth = props?.authenticationSettings as Record<string, unknown> | undefined;
+  if (!auth) {
+    return json;
+  }
+
+  const {
+    oAuth2,
+    openid,
+    oAuth2AuthenticationSettings,
+    openidAuthenticationSettings,
+    ...rest
+  } = auth;
+
+  const hasCollections =
+    (Array.isArray(oAuth2AuthenticationSettings) && oAuth2AuthenticationSettings.length > 0) ||
+    (Array.isArray(openidAuthenticationSettings) && openidAuthenticationSettings.length > 0);
+
+  const normalizedAuth: Record<string, unknown> = { ...rest };
+  if (hasCollections) {
+    if (Array.isArray(oAuth2AuthenticationSettings) && oAuth2AuthenticationSettings.length > 0) {
+      normalizedAuth.oAuth2AuthenticationSettings = oAuth2AuthenticationSettings;
+    }
+    if (Array.isArray(openidAuthenticationSettings) && openidAuthenticationSettings.length > 0) {
+      normalizedAuth.openidAuthenticationSettings = openidAuthenticationSettings;
+    }
+  } else {
+    if (oAuth2 !== undefined) normalizedAuth.oAuth2 = oAuth2;
+    if (openid !== undefined) normalizedAuth.openid = openid;
+  }
+
+  return { ...json, properties: { ...props, authenticationSettings: normalizedAuth } };
+}
+
+/**
  * Publish a single resource: read from store, apply overrides, PUT to APIM.
  * Preserves opaque JSON (FR-009). Uses applyOverrides for env-specific values.
  * Returns 'skipped' if resource file doesn't exist in store.
@@ -307,6 +354,7 @@ export async function publishResource(
     // base API to copy structure from. Also strip null properties that cause
     // validation errors in APIM's revision creation.
     if (descriptor.type === ResourceType.Api) {
+      json = normalizeApiAuthenticationSettings(json);
       const apiName = getNamePart(descriptor.nameParts, 0);
       if (apiName.includes(';rev=')) {
         const baseApiName = apiName.split(';rev=')[0];

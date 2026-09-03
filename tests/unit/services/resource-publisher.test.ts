@@ -5,7 +5,10 @@
  */
 
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { publishResource } from '../../../src/services/resource-publisher.js';
+import {
+  publishResource,
+  normalizeApiAuthenticationSettings,
+} from '../../../src/services/resource-publisher.js';
 import { ResourceType } from '../../../src/models/resource-types.js';
 import { ApimServiceContext, ResourceDescriptor } from '../../../src/models/types.js';
 import { PublishConfig } from '../../../src/models/config.js';
@@ -1240,6 +1243,60 @@ describe('resource-publisher', () => {
       const props = putPayload.properties as Record<string, unknown>;
       const creds = props.credentials as Record<string, unknown>;
       expect(creds.instrumentationKey).toBe('raw-instrumentation-key-value');
+    });
+  });
+
+  describe('normalizeApiAuthenticationSettings', () => {
+    it('keeps collections and drops singular fields when collections are non-empty', () => {
+      const json = {
+        properties: {
+          displayName: 'api',
+          authenticationSettings: {
+            oAuth2: { authorizationServerId: 'aad-oauth-2-0', scope: null },
+            openid: null,
+            oAuth2AuthenticationSettings: [
+              { authorizationServerId: 'aad-oauth-2-0', scope: null },
+            ],
+            openidAuthenticationSettings: [],
+            returnProtectedResourceMetadata: false,
+          },
+        },
+      };
+
+      const result = normalizeApiAuthenticationSettings(json);
+      const auth = (result.properties as Record<string, unknown>)
+        .authenticationSettings as Record<string, unknown>;
+
+      expect(auth.oAuth2).toBeUndefined();
+      expect(auth.openid).toBeUndefined();
+      expect(auth.oAuth2AuthenticationSettings).toHaveLength(1);
+      expect(auth.openidAuthenticationSettings).toBeUndefined();
+      expect(auth.returnProtectedResourceMetadata).toBe(false);
+    });
+
+    it('keeps singular fields and drops empty collection keys when collections are empty', () => {
+      const json = {
+        properties: {
+          authenticationSettings: {
+            oAuth2: { authorizationServerId: 'server-1' },
+            oAuth2AuthenticationSettings: [],
+            openidAuthenticationSettings: [],
+          },
+        },
+      };
+
+      const result = normalizeApiAuthenticationSettings(json);
+      const auth = (result.properties as Record<string, unknown>)
+        .authenticationSettings as Record<string, unknown>;
+
+      expect(auth.oAuth2).toEqual({ authorizationServerId: 'server-1' });
+      expect(auth.oAuth2AuthenticationSettings).toBeUndefined();
+      expect(auth.openidAuthenticationSettings).toBeUndefined();
+    });
+
+    it('returns json unchanged when authenticationSettings is absent', () => {
+      const json = { properties: { displayName: 'api' } };
+      expect(normalizeApiAuthenticationSettings(json)).toBe(json);
     });
   });
 });

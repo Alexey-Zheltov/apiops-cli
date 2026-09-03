@@ -615,6 +615,44 @@ describe('publish-service', () => {
       expect(result.totalDeletes).toBe(1);
     });
 
+    it('deletes a revisioned API via the base API only, not individual revisions', async () => {
+      const resources = [
+        { type: ResourceType.Tag, nameParts: ['tag1'] },
+      ];
+
+      const client = createMockClient();
+      const store = createMockStore(resources);
+
+      // computeDeleteActions returns both the base API and one of its revisions.
+      vi.mocked(computeDeleteActions).mockResolvedValue([
+        { type: ResourceType.Api, nameParts: ['orders-api'] },
+        { type: ResourceType.Api, nameParts: ['orders-api;rev=2'] },
+      ]);
+
+      const config: PublishConfig = {
+        service: testContext,
+        sourceDir: '/source',
+        dryRun: false,
+        deleteUnmatched: true,
+        logLevel: LogLevel.INFO,
+      };
+
+      const result = await runPublish(client, store, config);
+
+      // Base API delete (which uses deleteRevisions=true) is issued once.
+      expect(client.deleteResource).toHaveBeenCalledWith(
+        testContext,
+        { type: ResourceType.Api, nameParts: ['orders-api'] }
+      );
+      // The individual revision delete is dropped to avoid the
+      // "Cannot delete the current revision of an API" error.
+      expect(client.deleteResource).not.toHaveBeenCalledWith(
+        testContext,
+        { type: ResourceType.Api, nameParts: ['orders-api;rev=2'] }
+      );
+      expect(result.totalDeletes).toBe(1);
+    });
+
     it('should output per-resource status lines', async () => {
       const stdoutSpy = vi.spyOn(process.stdout, 'write').mockImplementation(() => true);
 

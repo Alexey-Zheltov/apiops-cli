@@ -463,7 +463,18 @@ export class ApimClient implements IApimClient {
     context: ApimServiceContext,
     descriptor: ResourceDescriptor
   ): Promise<boolean> {
-    const url = buildArmUri(context, descriptor);
+    let url = buildArmUri(context, descriptor);
+
+    // Deleting an API that has revisions requires deleteRevisions=true; without it
+    // APIM refuses the base (current-revision) delete with "Cannot delete the
+    // current revision of an API." This also removes all revisions in one call,
+    // so callers skip the individual ;rev=N deletes.
+    if (
+      descriptor.type === ResourceType.Api &&
+      !(descriptor.nameParts[0] ?? '').includes(';rev=')
+    ) {
+      url += '&deleteRevisions=true';
+    }
 
     for (let attempt = 1; ; attempt++) {
       try {
@@ -489,6 +500,15 @@ export class ApimClient implements IApimClient {
       } catch (error) {
         const message = (error as Error).message;
         if (message.includes('404')) {
+          return false;
+        }
+        // Resource is still referenced by another entity (e.g. a policy fragment
+        // used by the service policy). It cannot be deleted until the reference is
+        // removed; skip it with a warning instead of failing the whole prune.
+        if (message.includes('is used by the following entities')) {
+          logger.warn(
+            `Skipping delete of ${buildResourceLabel(descriptor)}: still referenced by another entity`
+          );
           return false;
         }
         // Transient optimistic-concurrency conflict: cascade deletes of related

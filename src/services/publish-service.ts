@@ -638,6 +638,42 @@ function getApiRootName(apiName: string): string {
 }
 
 /**
+ * Drop ;rev=N API deletes whose base API is also queued for deletion. The base
+ * API delete uses deleteRevisions=true and removes all revisions in one call, so
+ * deleting individual revisions separately is redundant and can hit APIM's
+ * "Cannot delete the current revision of an API" error.
+ */
+function filterRevisionDeletesHandledByBaseApi(
+  descriptors: ResourceDescriptor[]
+): ResourceDescriptor[] {
+  const baseApiNames = new Set<string>();
+  for (const descriptor of descriptors) {
+    if (descriptor.type !== ResourceType.Api) {
+      continue;
+    }
+    const apiName = getNamePart(descriptor.nameParts, 0);
+    if (!isApiRevisionName(apiName)) {
+      baseApiNames.add(apiName);
+    }
+  }
+
+  if (baseApiNames.size === 0) {
+    return descriptors;
+  }
+
+  return descriptors.filter((descriptor) => {
+    if (descriptor.type !== ResourceType.Api) {
+      return true;
+    }
+    const apiName = getNamePart(descriptor.nameParts, 0);
+    if (!isApiRevisionName(apiName)) {
+      return true;
+    }
+    return !baseApiNames.has(getApiRootName(apiName));
+  });
+}
+
+/**
  * Execute DELETE operations in reverse dependency order (tier 4 → tier 1).
  */
 async function executeDeletes(
@@ -678,9 +714,15 @@ async function executeDeletesForDescriptors(
 
   const results: PublishActionResult[] = [];
 
+  // When a base API is being deleted, the DELETE uses deleteRevisions=true and
+  // removes all of its revisions in one call. Drop individual ;rev=N deletes
+  // whose base API is also in the delete set to avoid redundant/racy deletes and
+  // the "Cannot delete the current revision of an API" error.
+  const effectiveDescriptors = filterRevisionDeletesHandledByBaseApi(deleteDescriptors);
+
   // Group by tier
   const tierGroups = new Map<number, ResourceDescriptor[]>();
-  for (const descriptor of deleteDescriptors) {
+  for (const descriptor of effectiveDescriptors) {
     const tier = getResourceTier(descriptor.type);
     if (!tierGroups.has(tier)) {
       tierGroups.set(tier, []);
