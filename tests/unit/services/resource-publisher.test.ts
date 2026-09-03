@@ -876,6 +876,50 @@ describe('resource-publisher', () => {
         expect(props).toHaveProperty('path', '/api');
       });
 
+      it('sends an explicit empty apiRevisionDescription when absent and never sends description', async () => {
+        const client = createMockClient();
+        const store = createMockStore();
+        store.readResource.mockResolvedValue({
+          name: 'my-api;rev=2',
+          // description present in the artifact; apiRevisionDescription absent
+          properties: { path: '/api', description: 'copied from current' },
+        });
+
+        const descriptor: ResourceDescriptor = {
+          type: ResourceType.Api,
+          nameParts: ['my-api;rev=2'],
+        };
+
+        await publishResource(client, store, testContext, descriptor, testConfig);
+
+        const props = (client.putResource.mock.calls[0][2] as Record<string, unknown>)
+          .properties as Record<string, unknown>;
+        // Prevents inheriting the current revision's description via sourceApiId copy
+        expect(props.apiRevisionDescription).toBe('');
+        // APIM rejects Description changes for non-current revisions
+        expect(props).not.toHaveProperty('description');
+      });
+
+      it('preserves an explicit apiRevisionDescription from the artifact', async () => {
+        const client = createMockClient();
+        const store = createMockStore();
+        store.readResource.mockResolvedValue({
+          name: 'my-api;rev=2',
+          properties: { path: '/api', apiRevisionDescription: 'v1' },
+        });
+
+        const descriptor: ResourceDescriptor = {
+          type: ResourceType.Api,
+          nameParts: ['my-api;rev=2'],
+        };
+
+        await publishResource(client, store, testContext, descriptor, testConfig);
+
+        const props = (client.putResource.mock.calls[0][2] as Record<string, unknown>)
+          .properties as Record<string, unknown>;
+        expect(props.apiRevisionDescription).toBe('v1');
+      });
+
       it('does not inject sourceApiId for non-revision APIs', async () => {
         const client = createMockClient();
         const store = createMockStore();
@@ -1297,6 +1341,49 @@ describe('resource-publisher', () => {
     it('returns json unchanged when authenticationSettings is absent', () => {
       const json = { properties: { displayName: 'api' } };
       expect(normalizeApiAuthenticationSettings(json)).toBe(json);
+    });
+
+    it('prefers non-null legacy fields over collections when preferLegacyFields is set', () => {
+      const json = {
+        properties: {
+          authenticationSettings: {
+            oAuth2: { authorizationServerId: 'override-server' },
+            oAuth2AuthenticationSettings: [
+              { authorizationServerId: 'extracted-server' },
+            ],
+          },
+        },
+      };
+
+      const result = normalizeApiAuthenticationSettings(json, { preferLegacyFields: true });
+      const auth = (result.properties as Record<string, unknown>)
+        .authenticationSettings as Record<string, unknown>;
+
+      expect(auth.oAuth2).toEqual({ authorizationServerId: 'override-server' });
+      expect(auth.oAuth2AuthenticationSettings).toBeUndefined();
+      expect(auth.openidAuthenticationSettings).toBeUndefined();
+    });
+
+    it('falls back to collections when preferLegacyFields is set but legacy fields are null', () => {
+      const json = {
+        properties: {
+          authenticationSettings: {
+            oAuth2: null,
+            openid: null,
+            oAuth2AuthenticationSettings: [
+              { authorizationServerId: 'extracted-server' },
+            ],
+          },
+        },
+      };
+
+      const result = normalizeApiAuthenticationSettings(json, { preferLegacyFields: true });
+      const auth = (result.properties as Record<string, unknown>)
+        .authenticationSettings as Record<string, unknown>;
+
+      expect(auth.oAuth2AuthenticationSettings).toHaveLength(1);
+      expect(auth.oAuth2).toBeUndefined();
+      expect(auth.openid).toBeUndefined();
     });
   });
 });
