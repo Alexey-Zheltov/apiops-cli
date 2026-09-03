@@ -248,6 +248,48 @@ describe('publish-service', () => {
       expect(apiCallOrder).toEqual(['src-rest-openapi', 'src-mcp-from-api']);
     });
 
+    it('should wait for APIs to finish publishing before publishing Products in tier 2', async () => {
+      const resources: ResourceDescriptor[] = [
+        { type: ResourceType.Product, nameParts: ['petstore-product'] },
+        { type: ResourceType.Api, nameParts: ['swagger-petstore'] },
+      ];
+      const client = createMockClient();
+      const store = createMockStore(resources);
+      let finishApi!: () => void;
+      const apiFinished = new Promise<void>((resolve) => {
+        finishApi = resolve;
+      });
+
+      vi.mocked(publishApi).mockImplementation(async (_client, _store, _context, descriptor) => {
+        await apiFinished;
+        return {
+          descriptor,
+          status: 'success',
+          action: 'put',
+        };
+      });
+
+      const config: PublishConfig = {
+        service: testContext,
+        sourceDir: '/source',
+        dryRun: false,
+        deleteUnmatched: false,
+        logLevel: LogLevel.INFO,
+      };
+
+      const publishPromise = runPublish(client, store, config);
+      await vi.waitFor(() => expect(publishApi).toHaveBeenCalledOnce());
+
+      try {
+        expect(publishProduct).not.toHaveBeenCalled();
+      } finally {
+        finishApi();
+        await publishPromise;
+      }
+
+      expect(publishProduct).toHaveBeenCalledOnce();
+    });
+
     it('should not publish revision APIs as standalone resources when root API is in the same batch', async () => {
       const resources: ResourceDescriptor[] = [
         { type: ResourceType.Api, nameParts: ['orders-api;rev=2'] },
