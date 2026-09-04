@@ -422,7 +422,7 @@ export async function publishResource(
         }
         if (
           Object.hasOwn(cleanProps, 'description') &&
-          hasExplicitPropertyOverride(baseApiName ?? apiName, 'description', config.overrides?.apis)
+          hasExplicitPropertyOverride(apiName, 'description', config.overrides?.apis)
         ) {
           logger.warn(
             `Ignoring 'description' override for revision '${apiName}': ` +
