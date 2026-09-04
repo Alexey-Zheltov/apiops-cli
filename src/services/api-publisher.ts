@@ -237,8 +237,9 @@ async function publishRootApi(
 
   // Root APIs publish through api-publisher rather than publishResource, so
   // they need the same pre-override MCP tool normalization here that revision
-  // APIs receive in resource-publisher.
-  json = normalizeMcpToolOperationIds(json, context);
+  // APIs receive in resource-publisher — including env-mapped API names so the
+  // tool operationIds match the affixed API this PUT targets.
+  json = normalizeMcpToolOperationIds(json, context, config.envMapping);
 
   // Apply overrides
   json = applyOverrides(descriptor, json, config.overrides);
@@ -356,6 +357,7 @@ async function publishApiRevisions(
 
   // Publish each revision in order; a failed revision must fail the API —
   // otherwise errors are silently swallowed and the exit code stays 0.
+  let publishedCount = 0;
   for (const revDescriptor of sortedRevisions) {
     if (
       rootRevisionNumber !== undefined &&
@@ -373,9 +375,12 @@ async function publishApiRevisions(
         `${result.error?.message ?? 'unknown error'}`
       );
     }
+    if (result.status === 'success') publishedCount++;
   }
 
-  return sortedRevisions.length;
+  // Return only revisions actually published so the caller does not run a
+  // spurious active-revision alignment PUT when nothing changed.
+  return publishedCount;
 }
 
 /**

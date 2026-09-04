@@ -327,6 +327,34 @@ describe('api-publisher', () => {
       }]);
     });
 
+    it('env-maps the API name in MCP tool operationIds on the root PUT', async () => {
+      const client = createMockClient();
+      const store = createMockStore([]);
+      store.readResource.mockResolvedValue({
+        name: 'orders-api',
+        properties: {
+          type: 'mcp',
+          mcpProperties: { serverUrl: 'https://example.com/mcp' },
+          mcpTools: [{
+            name: 'invokeTool',
+            operationId: '/subscriptions/src-sub/resourceGroups/src-rg/providers/Microsoft.ApiManagement/service/src-apim/apis/orders-api/operations/get-orders',
+          }],
+        },
+      });
+
+      const envMapping: EnvMapping = { prefix: 'dev-', suffix: '-eu', appliesTo: new Set([ResourceType.Api]) };
+      const config: PublishConfig = { ...testConfig, envMapping };
+
+      await publishApi(client, store, testContext, { type: ResourceType.Api, nameParts: ['orders-api'] }, config);
+
+      const [, , payload] = client.putResource.mock.calls[0] as [unknown, unknown, Record<string, unknown>];
+      const mcpTools = (payload.properties as Record<string, unknown>).mcpTools as Array<Record<string, unknown>>;
+      // operationId must reference the affixed API name that the PUT targets.
+      expect(mcpTools[0].operationId).toBe(
+        '/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ApiManagement/service/apim-1/apis/dev-orders-api-eu/operations/get-orders'
+      );
+    });
+
     it('should filter out legacy McpServer child artifacts while still publishing other API children', async () => {
       const client = createMockClient();
       const children = [
@@ -503,6 +531,28 @@ describe('api-publisher', () => {
       );
       expect(publishedRevs).toContain('orders-api;rev=2');
       expect(publishedRevs).not.toContain('orders-api;rev=3');
+    });
+
+    it('does not run the alignment PUT when the only revision is the skipped duplicate', async () => {
+      const client = createMockClient();
+      const store = createMockStore([
+        { type: ResourceType.Api, nameParts: ['orders-api;rev=3'] },
+      ]);
+      // Root is the current rev 3; the only revision artifact duplicates it → skipped.
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && !(d.nameParts[0] ?? '').includes(';rev=')) {
+          return { name: 'orders-api', properties: { apiRevision: '3', isCurrent: true } };
+        }
+        return null;
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['orders-api'] };
+
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      // Nothing was actually published → no spurious second (alignment) root PUT.
+      expect(mockPublishResource).not.toHaveBeenCalled();
+      expect(client.putResource).toHaveBeenCalledTimes(1);
     });
 
     it('should replay root API without re-importing specification after revisions', async () => {
