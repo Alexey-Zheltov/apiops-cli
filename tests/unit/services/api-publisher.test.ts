@@ -11,6 +11,7 @@ import { ApimServiceContext, ResourceDescriptor } from '../../../src/models/type
 import { PublishConfig } from '../../../src/models/config.js';
 import { LogLevel } from '../../../src/lib/logger.js';
 import { applyOverrides } from '../../../src/services/override-merger.js';
+import { EnvMapping } from '../../../src/services/env-mapper.js';
 
 // Mock resource-publisher so we can verify call sequence
 const mockPublishResource = vi.fn();
@@ -479,6 +480,31 @@ describe('api-publisher', () => {
       expect(client.putResource).toHaveBeenCalledTimes(1);
     });
 
+    it('skips the revision artifact whose number equals the current root revision', async () => {
+      const client = createMockClient();
+      const store = createMockStore([
+        { type: ResourceType.Api, nameParts: ['orders-api;rev=2'] },
+        { type: ResourceType.Api, nameParts: ['orders-api;rev=3'] },
+      ]);
+      // Root is the current revision 3; the ;rev=3 artifact duplicates it.
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && !(d.nameParts[0] ?? '').includes(';rev=')) {
+          return { name: 'orders-api', properties: { apiRevision: '3', isCurrent: true } };
+        }
+        return null;
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['orders-api'] };
+
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const publishedRevs = mockPublishResource.mock.calls.map(
+        (c: unknown[]) => (c[3] as ResourceDescriptor).nameParts[0]
+      );
+      expect(publishedRevs).toContain('orders-api;rev=2');
+      expect(publishedRevs).not.toContain('orders-api;rev=3');
+    });
+
     it('should replay root API without re-importing specification after revisions', async () => {
       const client = createMockClient();
       const revisions = [{ type: ResourceType.Api, nameParts: ['orders-api;rev=2'] }];
@@ -594,6 +620,72 @@ describe('api-publisher', () => {
       // Only orders-api;rev=2 should be published
       expect(mockPublishResource).toHaveBeenCalledTimes(1);
       expect(mockPublishResource.mock.calls[0][3].nameParts[0]).toBe('orders-api;rev=2');
+    });
+
+    it('fails the API publish when a revision publish fails (no silent success)', async () => {
+      const client = createMockClient();
+      const store = createMockStore([
+        { type: ResourceType.Api, nameParts: ['orders-api;rev=2'] },
+      ]);
+      // Root API publishes fine; the revision publish returns failed.
+      mockPublishResource.mockResolvedValue({
+        descriptor: { type: ResourceType.Api, nameParts: ['orders-api;rev=2'] },
+        status: 'failed',
+        action: 'noop',
+        error: new Error('revision boom'),
+      });
+
+      const apiDescriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+      };
+
+      const result = await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      expect(result.status).toBe('failed');
+      expect(result.error?.message).toContain('orders-api;rev=2');
+    });
+
+    it('reconciles operations against the env-mapped API name after spec import', async () => {
+      const client = createMockClient();
+      const store = createMockStore([
+        { type: ResourceType.ApiOperation, nameParts: ['orders-api', 'get-orders'] },
+      ]);
+      store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+        if (d.type === ResourceType.Api && !(d.nameParts[0] ?? '').includes(';rev=')) {
+          return { name: 'orders-api', properties: {} };
+        }
+        if (d.type === ResourceType.ApiOperation) {
+          return { name: 'get-orders', properties: { displayName: 'Get Orders', method: 'GET', urlTemplate: '/orders' } };
+        }
+        return null;
+      });
+      store.readContent.mockImplementation(async (_dir: string, _d: ResourceDescriptor, kind: string) => {
+        return kind === 'specification'
+          ? { content: 'openapi: 3.0.0\ninfo:\n  title: t\n  version: "1"\npaths: {}\n', format: 'yaml' }
+          : undefined;
+      });
+      // Execute the reconcile tasks so the PATCH target can be asserted.
+      mockRunParallel.mockImplementation(async (tasks: Array<() => Promise<unknown>>) => {
+        for (const t of tasks) await t();
+      });
+
+      const envMapping: EnvMapping = { prefix: 'dev-', suffix: '-eu', appliesTo: new Set([ResourceType.Api]) };
+      const config: PublishConfig = { ...testConfig, envMapping };
+
+      await publishApi(
+        client, store, testContext,
+        { type: ResourceType.Api, nameParts: ['orders-api'] },
+        config
+      );
+
+      const opPatch = client.patchResource.mock.calls.find(
+        (c: unknown[]) => (c[1] as ResourceDescriptor).type === ResourceType.ApiOperation
+      );
+      expect(opPatch).toBeDefined();
+      // PATCH must target the affixed API name, not the canonical one.
+      expect((opPatch![1] as ResourceDescriptor).nameParts[0]).toBe('dev-orders-api-eu');
+      expect((opPatch![1] as ResourceDescriptor).nameParts[1]).toBe('get-orders');
     });
 
     it('should publish API child resources in parallel', async () => {

@@ -297,6 +297,13 @@ describe('env-mapper', () => {
       expect(isInEnvNamespace('dev-orders-api-eu;rev=2', ResourceType.Api, mb)).toBe(true);
       expect(isInEnvNamespace('orders-api;rev=2', ResourceType.Api, mb)).toBe(false);
     });
+
+    it('does NOT split ;rev= for non-API types (affix applies to the whole name)', () => {
+      const mb = bothMapping('dev-', '-eu');
+      // ;rev= is only meaningful for API revisions; other types treat it literally.
+      expect(toDeployedName('token;rev=2', ResourceType.NamedValue, mb)).toBe('dev-token;rev=2-eu');
+      expect(toCanonicalName('dev-token;rev=2-eu', ResourceType.NamedValue, mb)).toBe('token;rev=2');
+    });
   });
 
   // ─── isInEnvNamespace ────────────────────────────────────────────────────

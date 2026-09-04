@@ -345,9 +345,27 @@ async function publishApiRevisions(
     return revA - revB;
   });
 
+  // The current revision is already published as the root API, so skip a
+  // revision artifact that carries the same number — otherwise we re-create /
+  // collide with it (e.g. the root PUT created at ;rev=N for a fresh
+  // multi-revision API, or a stale ;rev=N folder from an older extract).
+  const rootJson = await store.readResource(config.sourceDir, apiDescriptor);
+  const rootRevision = (rootJson?.properties as Record<string, unknown> | undefined)?.apiRevision;
+  const rootRevisionNumber =
+    typeof rootRevision === 'string' && rootRevision !== '' ? Number(rootRevision) : undefined;
+
   // Publish each revision in order; a failed revision must fail the API —
   // otherwise errors are silently swallowed and the exit code stays 0.
   for (const revDescriptor of sortedRevisions) {
+    if (
+      rootRevisionNumber !== undefined &&
+      extractRevisionNumber(getNamePart(revDescriptor.nameParts, 0)) === rootRevisionNumber
+    ) {
+      logger.debug(
+        `Skipping revision ${getNamePart(revDescriptor.nameParts, 0)} — already published as the root API`
+      );
+      continue;
+    }
     const result = await publishResource(client, store, context, revDescriptor, config);
     if (result.status === 'failed') {
       throw new Error(
@@ -525,8 +543,15 @@ async function reconcileOperationsAfterSpecImport(
 
     const patchBody: Record<string, unknown> = { properties: patchProps };
 
+    // Artifact lookup above uses the canonical descriptor; the PATCH must target
+    // the deployed (env-mapped) name so reconciliation hits the API that the
+    // root create actually produced under environment mapping.
+    const patchDescriptor = config.envMapping
+      ? mapDescriptor(descriptor, config.envMapping)
+      : descriptor;
+
     try {
-      await client.patchResource(context, descriptor, patchBody);
+      await client.patchResource(context, patchDescriptor, patchBody);
       logger.debug(`Reconciled operation "${getNamePart(descriptor.nameParts, 1)}" after spec import`);
     } catch (error) {
       logger.warn(

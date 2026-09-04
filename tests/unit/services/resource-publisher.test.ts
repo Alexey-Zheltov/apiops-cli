@@ -1442,5 +1442,28 @@ describe('resource-publisher', () => {
       expect(prefersLegacyAuthOverride('my-api', undefined)).toBe(false);
       expect(prefersLegacyAuthOverride('my-api', { 'my-api': { properties: { path: '/x' } } })).toBe(false);
     });
+
+    it('matches by the exact resource key (revision names are not base-inherited)', () => {
+      // A revision-specific legacy override is honored only under its full key —
+      // this is why the caller looks up the full API name, not the stripped base.
+      const revisionSection = {
+        'my-api;rev=2': {
+          properties: {
+            authenticationSettings: { oAuth2: { authorizationServerId: 'rev-server' } },
+          },
+        },
+      };
+      expect(prefersLegacyAuthOverride('my-api;rev=2', revisionSection)).toBe(true);
+
+      // A base override must NOT leak into a revision publish (keys differ).
+      const baseSection = {
+        'my-api': {
+          properties: {
+            authenticationSettings: { oAuth2: { authorizationServerId: 'base-server' } },
+          },
+        },
+      };
+      expect(prefersLegacyAuthOverride('my-api;rev=2', baseSection)).toBe(false);
+    });
   });
 });

@@ -394,10 +394,7 @@ export async function publishResource(
     if (descriptor.type === ResourceType.Api) {
       const apiName = getNamePart(descriptor.nameParts, 0);
       json = normalizeApiAuthenticationSettings(json, {
-        preferLegacyFields: prefersLegacyAuthOverride(
-          apiName.split(';rev=')[0] ?? apiName,
-          config.overrides?.apis
-        ),
+        preferLegacyFields: prefersLegacyAuthOverride(apiName, config.overrides?.apis),
       });
       if (apiName.includes(';rev=')) {
         const baseApiName = apiName.split(';rev=')[0];
