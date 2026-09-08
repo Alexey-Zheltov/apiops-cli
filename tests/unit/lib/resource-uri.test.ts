@@ -251,6 +251,26 @@ describe('buildResourceLabel', () => {
     expect(label).toBe('apis/petstore/operations/get-user');
   });
 
+  it('should fall back to artifact directory for parent-level association descriptor (GatewayApi)', () => {
+    // GatewayApi discovered from gateways/{gateway}/apis.json carries only the
+    // gateway name; armPathSuffix needs two parts and used to throw fatally.
+    const descriptor: ResourceDescriptor = {
+      type: ResourceType.GatewayApi,
+      nameParts: ['my-gateway'],
+    };
+    const label = buildResourceLabel(descriptor);
+    expect(label).toBe('gateways/my-gateway');
+  });
+
+  it('should format fully-expanded association descriptor (GatewayApi)', () => {
+    const descriptor: ResourceDescriptor = {
+      type: ResourceType.GatewayApi,
+      nameParts: ['my-gateway', 'my-api'],
+    };
+    const label = buildResourceLabel(descriptor);
+    expect(label).toBe('gateways/my-gateway/apis/my-api');
+  });
+
   it('should format grandchild policy resource (ApiOperationPolicy)', () => {
     const descriptor: ResourceDescriptor = {
       type: ResourceType.ApiOperationPolicy,
