@@ -18,8 +18,10 @@
 const AUTO_GENERATED_ID_PATTERN = /^[0-9a-f]{24}$/;
 
 /**
- * Pattern matching the newer epoch-milliseconds schema IDs that APIM assigns
- * on spec import with recent API versions (e.g. 2025-09-01-preview).
+ * Pattern matching epoch-milliseconds schema IDs (Date.now()-style) assigned
+ * when schemas are created outside spec import, e.g. by the Azure portal's
+ * OpenAPI specification editor. Verified: ARM spec import generates 24-hex
+ * IDs even on 2025-09-01-preview.
  * Example: "1786466527403"
  */
 const AUTO_GENERATED_TIMESTAMP_ID_PATTERN = /^\d{13}$/;
@@ -28,8 +30,8 @@ const AUTO_GENERATED_TIMESTAMP_ID_PATTERN = /^\d{13}$/;
  * Checks if a resource name/ID is an auto-generated APIM ID.
  *
  * APIM auto-generates these IDs for:
- * - ApiSchema resources when importing OpenAPI/WSDL specifications
- *   (24-char hex, or 13-digit epoch-millis on newer API versions)
+ * - ApiSchema resources when importing OpenAPI/WSDL specifications (24-char hex)
+ * - ApiSchema resources created via the portal spec editor (13-digit epoch-millis)
  * - NamedValue resources for logger credentials (EventHub, etc.)
  *
  * @param name - The resource name or ID to check

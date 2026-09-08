@@ -1894,6 +1894,42 @@ describe('api-publisher', () => {
       expect(totalTasks).toBe(1);
     });
 
+    it('should skip 13-digit epoch-millis schema IDs (portal-created) on spec import', async () => {
+      const client = createMockClient();
+      // The portal spec editor assigns Date.now()-style schema IDs; the spec
+      // import recreates schema content, so re-PUTs create a duplicate (#274).
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.oai.openapi.components+json',
+              document: { components: { schemas: {} } },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({ content: 'openapi: "3.0.0"', format: 'yaml' });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(0);
+    });
+
     it('should reconcile operations via PATCH even in incremental mode (commitId set)', async () => {
       mockRunParallel.mockImplementation(async (tasks: Array<() => Promise<unknown>>) => {
         for (const task of tasks) await task();
