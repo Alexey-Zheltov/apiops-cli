@@ -1982,6 +1982,104 @@ describe('api-publisher', () => {
       expect(totalTasks).toBe(1);
     });
 
+    it('should re-publish a 13-digit-named schema when a same-named component has a different shape', async () => {
+      const client = createMockClient();
+      // Same component name, different definition: the spec does NOT recreate
+      // this schema's data, so it must be retained.
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.oai.openapi.components+json',
+              document: {
+                components: {
+                  schemas: {
+                    Item: {
+                      type: 'object',
+                      required: ['id'],
+                      properties: { id: { type: 'integer' } },
+                    },
+                  },
+                },
+              },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Item: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
+    it('should re-publish a 13-digit-named standalone JSON Schema even when definition names overlap the spec', async () => {
+      const client = createMockClient();
+      // schemaType json: `definitions` are JSON Schema definitions, not Swagger
+      // components — spec import does not recreate this resource.
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.ms-azure-apim.schema.json',
+              document: { definitions: { Item: { type: 'object' } } },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Item: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
     it('should re-publish a 13-digit-named schema when the imported spec declares no components', async () => {
       const client = createMockClient();
       const timestampSchema = {

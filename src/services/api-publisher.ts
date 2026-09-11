@@ -276,7 +276,7 @@ export async function planApiPublication(
     );
 
   let importSpecification = false;
-  let importSpecSchemaNames: Set<string> | undefined;
+  let importSpecSchemaComponents: Record<string, unknown> | undefined;
   let operationDescriptionPuts: ResourceDescriptor[] = [];
   if (specificationAllowed) {
     const specification = await store.readContent(config.sourceDir, apiDescriptor, 'specification');
@@ -287,7 +287,7 @@ export async function planApiPublication(
       importSpecification =
         getImportFormat(specification.format ?? 'yaml', apiType, dialect) !== undefined;
       if (importSpecification) {
-        importSpecSchemaNames = getSpecComponentSchemaNames(
+        importSpecSchemaComponents = getSpecComponentSchemas(
           specification.content,
           specification.format
         );
@@ -329,24 +329,32 @@ export async function planApiPublication(
     // Portal-created schemas (13-digit Date.now() names) duplicate on re-PUT
     // because the spec import recreates their content (#274). A 13-digit name
     // alone is a weak signal, so only skip when the imported spec provably
-    // carries every component the artifact schema defines; otherwise publish
-    // it like any explicitly named schema.
+    // recreates every component the artifact schema defines — same name AND
+    // structurally identical definition. Any ambiguity → publish the schema
+    // like any explicitly named one.
     const explicitSchemas = (
       await Promise.all(
         candidateSchemas.map(async (descriptor) => {
           if (!isPortalGeneratedSchemaId(getNamePart(descriptor.nameParts, 1))) {
             return descriptor;
           }
-          if (!importSpecSchemaNames || importSpecSchemaNames.size === 0) {
+          const specComponents = importSpecSchemaComponents;
+          if (!specComponents || Object.keys(specComponents).length === 0) {
             return descriptor;
           }
           const schemaJson = await store.readResource(config.sourceDir, descriptor);
-          const componentNames = getArtifactSchemaComponentNames(schemaJson);
-          if (!componentNames || componentNames.length === 0) {
+          const artifactComponents = getArtifactSchemaComponents(schemaJson);
+          if (!artifactComponents) {
             return descriptor;
           }
-          const recreatedByImport = componentNames.every((name) =>
-            importSpecSchemaNames.has(name)
+          const entries = Object.entries(artifactComponents);
+          if (entries.length === 0) {
+            return descriptor;
+          }
+          const recreatedByImport = entries.every(
+            ([name, definition]) =>
+              Object.hasOwn(specComponents, name) &&
+              deepEqualUnordered(specComponents[name], definition)
           );
           return recreatedByImport ? undefined : descriptor;
         })
@@ -1083,16 +1091,16 @@ function detectSpecDialect(content: string, format: string | undefined): ApiSpec
 }
 
 /**
- * Extracts the set of schema component names declared in an OpenAPI/Swagger
+ * Extracts the schema component definitions declared in an OpenAPI/Swagger
  * spec document: `components.schemas` (OpenAPI 3.x) or `definitions`
  * (Swagger 2.0). Returns undefined when the content is not a parseable
  * OpenAPI/Swagger document (e.g. WSDL/GraphQL) — callers must treat that as
  * "no evidence" rather than "no schemas".
  */
-function getSpecComponentSchemaNames(
+function getSpecComponentSchemas(
   content: string,
   format: string | undefined
-): Set<string> | undefined {
+): Record<string, unknown> | undefined {
   if (format !== undefined && format !== 'yaml' && format !== 'json') {
     return undefined;
   }
@@ -1102,30 +1110,64 @@ function getSpecComponentSchemaNames(
     const components = (doc.components as Record<string, unknown> | undefined)?.schemas
       ?? doc.definitions;
     if (components && typeof components === 'object' && !Array.isArray(components)) {
-      return new Set(Object.keys(components));
+      return components as Record<string, unknown>;
     }
-    return new Set();
+    return {};
   } catch {
     return undefined;
   }
 }
 
 /**
- * Extracts the schema component names defined by an ApiSchema artifact's
+ * Extracts the schema component definitions from an ApiSchema artifact's
  * `properties.document` (`components.schemas` or Swagger `definitions`).
+ * Only OpenAPI/Swagger content types are inspected: in a standalone JSON
+ * Schema document (`schemaType: json`) `definitions` has a different meaning
+ * and the spec import does not recreate such a resource, so returns
+ * undefined ("no evidence") for any other content type.
  */
-function getArtifactSchemaComponentNames(
+function getArtifactSchemaComponents(
   json: Record<string, unknown> | null | undefined
-): string[] | undefined {
+): Record<string, unknown> | undefined {
   const props = json?.properties as Record<string, unknown> | undefined;
   const doc = props?.document as Record<string, unknown> | undefined;
   if (!doc || typeof doc !== 'object') return undefined;
+  const contentType = (props?.contentType as string | undefined)?.toLowerCase() ?? '';
+  if (
+    !contentType.includes('openapi.components') &&
+    !contentType.includes('swagger.definitions')
+  ) {
+    return undefined;
+  }
   const components = (doc.components as Record<string, unknown> | undefined)?.schemas
     ?? doc.definitions;
   if (components && typeof components === 'object' && !Array.isArray(components)) {
-    return Object.keys(components);
+    return components as Record<string, unknown>;
   }
   return undefined;
+}
+
+/**
+ * Deep structural equality with order-insensitive object keys (array order
+ * still matters — e.g. `required` lists are order-preserving in serialized
+ * specs but semantically it is safer to demand exact array equality).
+ */
+function deepEqualUnordered(a: unknown, b: unknown): boolean {
+  if (a === b) return true;
+  if (Array.isArray(a) || Array.isArray(b)) {
+    if (!Array.isArray(a) || !Array.isArray(b) || a.length !== b.length) return false;
+    return a.every((item, i) => deepEqualUnordered(item, b[i]));
+  }
+  if (a && b && typeof a === 'object' && typeof b === 'object') {
+    const aObj = a as Record<string, unknown>;
+    const bObj = b as Record<string, unknown>;
+    const aKeys = Object.keys(aObj);
+    if (aKeys.length !== Object.keys(bObj).length) return false;
+    return aKeys.every(
+      (key) => Object.hasOwn(bObj, key) && deepEqualUnordered(aObj[key], bObj[key])
+    );
+  }
+  return false;
 }
 
 /**
