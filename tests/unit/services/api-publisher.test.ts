@@ -1982,6 +1982,44 @@ describe('api-publisher', () => {
       expect(totalTasks).toBe(1);
     });
 
+    it('should publish the root API and retain a 13-digit schema when its artifact cannot be read', async () => {
+      const client = createMockClient();
+      const timestampSchema: ResourceDescriptor = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          throw new Error('Malformed schemaInformation.json');
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Item: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      const result = await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      expect(result.status).toBe('success');
+      expect(client.putResource).toHaveBeenCalled();
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
     it('should re-publish a 13-digit-named schema when a same-named component has a different shape', async () => {
       const client = createMockClient();
       // Same component name, different definition: the spec does NOT recreate

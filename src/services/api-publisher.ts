@@ -342,7 +342,12 @@ export async function planApiPublication(
           if (!specComponents || Object.keys(specComponents).length === 0) {
             return descriptor;
           }
-          const schemaJson = await store.readResource(config.sourceDir, descriptor);
+          let schemaJson: Record<string, unknown> | undefined;
+          try {
+            schemaJson = await store.readResource(config.sourceDir, descriptor);
+          } catch {
+            return descriptor;
+          }
           const artifactComponents = getArtifactSchemaComponents(schemaJson);
           if (!artifactComponents) {
             return descriptor;
