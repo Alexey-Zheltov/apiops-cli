@@ -130,6 +130,17 @@ export function parseArmUri(
  */
 export function buildResourceLabel(descriptor: ResourceDescriptor): string {
   const metadata = RESOURCE_TYPE_METADATA[descriptor.type];
+
+  // Association types (e.g. GatewayApi) are sometimes discovered at the
+  // parent-association-file level — a descriptor carrying only the parent's
+  // name-parts (e.g. GatewayApi ['my-gateway'] representing
+  // gateways/my-gateway/apis.json before per-API entries are expanded).
+  // armPathSuffix has more placeholders than such a descriptor can fill, so
+  // fall back to artifactDirectory (which only needs the parent's parts).
+  if (descriptor.nameParts.length < countTemplatePlaceholders(metadata.armPathSuffix)) {
+    return formatTemplatePath(metadata.artifactDirectory, descriptor.nameParts);
+  }
+
   // armPathSuffix has no leading slash, so the result is already relative
   return formatTemplatePath(metadata.armPathSuffix, descriptor.nameParts);
 }
