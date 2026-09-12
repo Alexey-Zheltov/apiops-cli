@@ -1385,6 +1385,105 @@ describe('resource-publisher', () => {
       expect(client.putResource).toHaveBeenCalledTimes(1);
     });
 
+    it('should normalize ownerId from source service ARM path to relative /users path', async () => {
+      const client = createMockClient();
+      const store = createMockStore();
+
+      // ownerId carries the SOURCE service coordinates after extract
+      const sourceArmPrefix =
+        '/subscriptions/src-sub/resourceGroups/src-rg/providers/Microsoft.ApiManagement/service/src-apim';
+      const targetArmPrefix =
+        '/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ApiManagement/service/apim-1';
+
+      store.readResource.mockResolvedValue({
+        name: 'team-a-product-sub',
+        properties: {
+          ownerId: `${sourceArmPrefix}/users/1`,
+          scope: `${targetArmPrefix}/products/starter`,
+          displayName: 'Team A starter product',
+          state: 'active',
+        },
+      });
+
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Subscription,
+        nameParts: ['team-a-product-sub'],
+      };
+
+      await publishResource(client, store, testContext, descriptor, testConfig);
+
+      const putJson = client.putResource.mock.calls[0][2] as Record<string, unknown>;
+      const props = putJson.properties as Record<string, unknown>;
+      expect(props.ownerId).toBe('/users/1');
+    });
+
+    it('should leave already-relative ownerId untouched', async () => {
+      const client = createMockClient();
+      const store = createMockStore();
+
+      const armScopePrefix =
+        '/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ApiManagement/service/apim-1';
+
+      store.readResource.mockResolvedValue({
+        name: 'team-a-product-sub',
+        properties: {
+          ownerId: '/users/42',
+          scope: `${armScopePrefix}/products/starter`,
+          displayName: 'Team A starter product',
+          state: 'active',
+        },
+      });
+
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Subscription,
+        nameParts: ['team-a-product-sub'],
+      };
+
+      await publishResource(client, store, testContext, descriptor, testConfig);
+
+      const putJson = client.putResource.mock.calls[0][2] as Record<string, unknown>;
+      const props = putJson.properties as Record<string, unknown>;
+      expect(props.ownerId).toBe('/users/42');
+    });
+
+    it('should not apply envMapping affixes to normalized ownerId', async () => {
+      const client = createMockClient();
+      const store = createMockStore();
+
+      const sourceArmPrefix =
+        '/subscriptions/src-sub/resourceGroups/src-rg/providers/Microsoft.ApiManagement/service/src-apim';
+
+      store.readResource.mockResolvedValue({
+        name: 'team-a-product-sub',
+        properties: {
+          ownerId: `${sourceArmPrefix}/users/1`,
+          scope: `${sourceArmPrefix}/products/starter`,
+          displayName: 'Team A starter product',
+          state: 'active',
+        },
+      });
+
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Subscription,
+        nameParts: ['team-a-product-sub'],
+      };
+      const config: PublishConfig = {
+        ...testConfig,
+        envMapping: buildEnvMapping({
+          namePrefix: 'dev-',
+          appliesTo: [ResourceType.Product],
+        }),
+      };
+
+      await publishResource(client, store, testContext, descriptor, config);
+
+      const putJson = client.putResource.mock.calls[0][2] as Record<string, unknown>;
+      const props = putJson.properties as Record<string, unknown>;
+      // scope gets the affixed product name, ownerId must not be affixed
+      expect(props.scope).toBe('/products/dev-starter');
+      expect(props.ownerId).toBe('/users/1');
+    });
+
     describe('ApiOperation text normalization', () => {
       it('sets displayName and description to empty string when omitted', async () => {
         const client = createMockClient();

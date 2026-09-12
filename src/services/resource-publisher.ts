@@ -429,6 +429,7 @@ export async function publishResource(
         descriptor.workspace,
         config.envMapping
       );
+      json = normalizeSubscriptionOwnerId(json);
     }
 
     // ApiRelease: normalize properties.apiId from source ARM path to target ARM path.
@@ -1156,6 +1157,37 @@ function normalizeSubscriptionScope(
   }
 
   return json;
+}
+
+/**
+ * Normalise the `properties.ownerId` field of a Subscription resource.
+ *
+ * APIM returns ownerId as a full ARM resource path on GET, e.g.:
+ *   /subscriptions/{sub}/resourceGroups/{rg}/providers/Microsoft.ApiManagement/service/{svc}/users/1
+ *
+ * The PUT endpoint requires a relative URL in the format `/users/{userId}`,
+ * so a subscription extracted from one instance would otherwise carry the
+ * source instance's service path. Strip the service ARM prefix like
+ * normalizeSubscriptionScope does for scope. Unlike scope, envMapping
+ * affixes must NOT be applied — a user id is not an affixed resource name.
+ * Already-relative values are left untouched.
+ */
+function normalizeSubscriptionOwnerId(
+  json: Record<string, unknown>
+): Record<string, unknown> {
+  const props = json.properties as Record<string, unknown> | undefined;
+  const ownerId = props?.ownerId;
+  if (typeof ownerId !== 'string') return json;
+
+  const serviceOwnerMatch = ownerId.match(
+    /^\/subscriptions\/[^/]+\/resourceGroups\/[^/]+\/providers\/Microsoft\.ApiManagement\/service\/[^/]+(\/users\/[^/]+)$/i
+  );
+  if (!serviceOwnerMatch?.[1]) return json;
+
+  return {
+    ...json,
+    properties: { ...props, ownerId: serviceOwnerMatch[1] },
+  };
 }
 
 export function applyApiPathPrefix(

@@ -9,6 +9,7 @@ import { describe, it, expect, vi, beforeEach, afterEach } from 'vitest';
 import { ApimClient, HttpError } from '../../../src/clients/apim-client.js';
 import { ResourceType } from '../../../src/models/resource-types.js';
 import { ApimServiceContext } from '../../../src/models/types.js';
+import { buildArmBaseUrl } from '../../../src/lib/cloud-config.js';
 
 const testContext: ApimServiceContext = {
   subscriptionId: 'sub-1',
@@ -30,6 +31,45 @@ function makeResponse(
     headers: { 'Content-Type': contentType },
   });
 }
+
+describe('ApimClient.validatePreFlight', () => {
+  afterEach(() => {
+    vi.restoreAllMocks();
+    vi.unstubAllGlobals();
+  });
+
+  it.each([
+    ['public', 'https://management.azure.com'],
+    ['usgov', 'https://management.usgovcloudapi.net'],
+    ['china', 'https://management.chinacloudapi.cn'],
+    ['germany', 'https://management.microsoftazure.de'],
+  ])('should use the %s endpoint for both pre-flight checks', async (cloud, endpoint) => {
+    const client = new ApimClient();
+    // eslint-disable-next-line @typescript-eslint/no-explicit-any
+    vi.spyOn(client as any, 'getToken').mockResolvedValue('fake-token');
+    const fetchSpy = vi.fn().mockImplementation(() => Promise.resolve(makeResponse(200, {})));
+    vi.stubGlobal('fetch', fetchSpy);
+    const context: ApimServiceContext = {
+      ...testContext,
+      resourceGroup: 'rg with spaces',
+      baseUrl: buildArmBaseUrl(cloud, testContext.subscriptionId, 'rg with spaces', testContext.serviceName),
+    };
+
+    await client.validatePreFlight(context);
+
+    expect(fetchSpy).toHaveBeenCalledTimes(2);
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      1,
+      `${endpoint}/subscriptions/sub-1/resourceGroups/rg%20with%20spaces?api-version=2021-04-01`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+    expect(fetchSpy).toHaveBeenNthCalledWith(
+      2,
+      `${context.baseUrl}?api-version=${context.apiVersion}`,
+      expect.objectContaining({ method: 'GET' }),
+    );
+  });
+});
 
 describe('ApimClient.listResources', () => {
   let client: ApimClient;
