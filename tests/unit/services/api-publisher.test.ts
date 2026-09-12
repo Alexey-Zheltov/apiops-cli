@@ -1894,6 +1894,264 @@ describe('api-publisher', () => {
       expect(totalTasks).toBe(1);
     });
 
+    it('should skip 13-digit portal schema when the imported spec recreates its components', async () => {
+      const client = createMockClient();
+      // The portal assigns Date.now()-style schema IDs; when the imported spec
+      // declares every component the schema defines, re-PUTs only duplicate it (#274).
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.oai.openapi.components+json',
+              document: { components: { schemas: { Item: { type: 'object' } } } },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Item: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(0);
+    });
+
+    it('should re-publish a 13-digit-named schema whose components are absent from the imported spec', async () => {
+      const client = createMockClient();
+      // Numeric-but-explicit case: the spec does not recreate this schema's
+      // content, so skipping it would silently lose it on a clean destination.
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.oai.openapi.components+json',
+              document: { components: { schemas: { Standalone: { type: 'object' } } } },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Other: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
+    it('should publish the root API and retain a 13-digit schema when its artifact cannot be read', async () => {
+      const client = createMockClient();
+      const timestampSchema: ResourceDescriptor = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          throw new Error('Malformed schemaInformation.json');
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Item: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      const result = await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      expect(result.status).toBe('success');
+      expect(client.putResource).toHaveBeenCalled();
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
+    it('should re-publish a 13-digit-named schema when a same-named component has a different shape', async () => {
+      const client = createMockClient();
+      // Same component name, different definition: the spec does NOT recreate
+      // this schema's data, so it must be retained.
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.oai.openapi.components+json',
+              document: {
+                components: {
+                  schemas: {
+                    Item: {
+                      type: 'object',
+                      required: ['id'],
+                      properties: { id: { type: 'integer' } },
+                    },
+                  },
+                },
+              },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Item: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
+    it('should re-publish a 13-digit-named standalone JSON Schema even when definition names overlap the spec', async () => {
+      const client = createMockClient();
+      // schemaType json: `definitions` are JSON Schema definitions, not Swagger
+      // components — spec import does not recreate this resource.
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.ms-azure-apim.schema.json',
+              document: { definitions: { Item: { type: 'object' } } },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({
+        content: JSON.stringify({
+          openapi: '3.0.1',
+          info: { title: 'rest-api', version: '1.0' },
+          paths: {},
+          components: { schemas: { Item: { type: 'object' } } },
+        }),
+        format: 'json',
+      });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
+    it('should re-publish a 13-digit-named schema when the imported spec declares no components', async () => {
+      const client = createMockClient();
+      const timestampSchema = {
+        type: ResourceType.ApiSchema,
+        nameParts: ['rest-api', '1786466527403'],
+      };
+      const store = createMockStore([timestampSchema]);
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Api) {
+          return { name: 'rest-api', properties: { path: 'rest' } };
+        }
+        if (descriptor.type === ResourceType.ApiSchema) {
+          return {
+            name: descriptor.nameParts[1],
+            properties: {
+              contentType: 'application/vnd.oai.openapi.components+json',
+              document: { components: { schemas: { Standalone: { type: 'object' } } } },
+            },
+          };
+        }
+        return null;
+      });
+      store.readContent.mockResolvedValue({ content: 'openapi: "3.0.0"', format: 'yaml' });
+
+      const apiDescriptor: ResourceDescriptor = { type: ResourceType.Api, nameParts: ['rest-api'] };
+      await publishApi(client, store, testContext, apiDescriptor, testConfig);
+
+      const totalTasks = mockRunParallel.mock.calls.reduce((sum, call) => {
+        const tasks = call[0] as unknown[];
+        return sum + tasks.length;
+      }, 0);
+      expect(totalTasks).toBe(1);
+    });
+
     it('should reconcile operations via PATCH even in incremental mode (commitId set)', async () => {
       mockRunParallel.mockImplementation(async (tasks: Array<() => Promise<unknown>>) => {
         for (const task of tasks) await task();
