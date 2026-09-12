@@ -774,7 +774,8 @@ export class ApimClient implements IApimClient {
 
   async validatePreFlight(context: ApimServiceContext): Promise<void> {
     // Check resource group exists
-    const rgUrl = `https://management.azure.com/subscriptions/${encodeURIComponent(context.subscriptionId)}/resourceGroups/${encodeURIComponent(context.resourceGroup)}?api-version=${ApimClient.RESOURCE_GROUP_API_VERSION}`;
+    const armEndpoint = new URL(context.baseUrl).origin;
+    const rgUrl = `${armEndpoint}/subscriptions/${encodeURIComponent(context.subscriptionId)}/resourceGroups/${encodeURIComponent(context.resourceGroup)}?api-version=${ApimClient.RESOURCE_GROUP_API_VERSION}`;
     let rgResponse: Response;
     try {
       rgResponse = await this.request(rgUrl, { method: 'GET' });
