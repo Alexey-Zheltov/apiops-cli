@@ -448,7 +448,7 @@ export async function publishResource(
       descriptor.type === ResourceType.Diagnostic ||
       descriptor.type === ResourceType.ApiDiagnostic
     ) {
-      json = normalizeDiagnosticLoggerId(json, context, config.envMapping);
+      json = normalizeDiagnosticLoggerId(json, context, descriptor.workspace, config.envMapping);
     }
 
     if (descriptor.type === ResourceType.Api) {
@@ -1284,11 +1284,13 @@ function normalizeApiReleaseApiId(
  * Rebuild `properties.loggerId` of a Diagnostic against the target service.
  * APIM stores loggerId as the source service's full ARM path; a PUT whose
  * loggerId points at another service fails with "Cross-service resource
- * references are not allowed".
+ * references are not allowed". Workspace diagnostics reference workspace
+ * loggers, so the deployed workspace segment is included when present.
  */
 export function normalizeDiagnosticLoggerId(
   json: Record<string, unknown>,
   context: ApimServiceContext,
+  workspace?: string,
   envMapping?: EnvMapping
 ): Record<string, unknown> {
   const props = json.properties as Record<string, unknown> | undefined;
@@ -1306,10 +1308,18 @@ export function normalizeDiagnosticLoggerId(
   const deployedLogger = envMapping
     ? toDeployedName(loggerName, ResourceType.Logger, envMapping)
     : loggerName;
+  const deployedWorkspace = workspace
+    ? envMapping
+      ? toDeployedName(workspace, ResourceType.Workspace, envMapping)
+      : workspace
+    : undefined;
+  const targetLoggerId = deployedWorkspace
+    ? `${targetArmPrefix}/workspaces/${deployedWorkspace}/loggers/${deployedLogger}`
+    : `${targetArmPrefix}/loggers/${deployedLogger}`;
 
   return {
     ...json,
-    properties: { ...props, loggerId: `${targetArmPrefix}/loggers/${deployedLogger}` },
+    properties: { ...props, loggerId: targetLoggerId },
   };
 }
 

@@ -2046,10 +2046,25 @@ describe('resource-publisher', () => {
         },
       };
 
-      const result = normalizeDiagnosticLoggerId(json, testContext, envMapping);
+      const result = normalizeDiagnosticLoggerId(json, testContext, undefined, envMapping);
 
       expect((result.properties as Record<string, unknown>).loggerId).toBe(
         '/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ApiManagement/service/apim-1/loggers/my-logger-dev'
+      );
+    });
+
+    it('includes the workspace segment for workspace-scoped diagnostics', () => {
+      const json = {
+        properties: {
+          loggerId:
+            '/subscriptions/src-sub/resourceGroups/src-rg/providers/Microsoft.ApiManagement/service/src-svc/workspaces/ws-1/loggers/my-logger',
+        },
+      };
+
+      const result = normalizeDiagnosticLoggerId(json, testContext, 'ws-1');
+
+      expect((result.properties as Record<string, unknown>).loggerId).toBe(
+        '/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ApiManagement/service/apim-1/workspaces/ws-1/loggers/my-logger'
       );
     });
   });
