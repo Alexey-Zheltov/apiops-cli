@@ -416,8 +416,6 @@ workspaces:
 
 The supported workspace child sections are: `apis`, `backends`, `diagnostics`, `groups`, `loggers`, `namedValues`, `policyFragments`, `products`, `subscriptions`, `tags`, and `versionSets`.
 
-> ⚠️ **Known limitation — tracked in [#118](https://github.com/Azure/apiops-cli/issues/118):** workspace child overrides are *parsed* (the YAML above is accepted with no errors) but are **not yet applied at publish time**. Until #118 is fixed, only the workspace container's own `properties` are honored for workspace-scoped resources. Authoring overrides in this nested shape today is safe and forward-compatible — they will start taking effect automatically once the merger is updated.
-
 ## Override rules
 
 ### Names must be consistent

@@ -91,7 +91,7 @@ export function applyOverrides(
   // Try direct override lookup first
   const directSection = OVERRIDE_SECTION_MAP[descriptor.type];
   if (directSection) {
-    const section = overrides[directSection];
+    const section = resolveSection(overrides, directSection, descriptor.workspace);
     if (!section) return { ...json };
     return applyFromSection(descriptor, json, section);
   }
@@ -99,16 +99,43 @@ export function applyOverrides(
   // Try nested child override lookup
   const childMapping = CHILD_OVERRIDE_MAP[descriptor.type];
   if (childMapping) {
-    return applyNestedOverride(descriptor, json, overrides, childMapping);
+    const parentSection = resolveSection(overrides, childMapping.parentSection, descriptor.workspace);
+    if (!parentSection) return { ...json };
+    return applyNestedOverride(descriptor, json, parentSection, childMapping);
   }
 
   // Try grandchild (3-level) override lookup
   const grandchildMapping = GRANDCHILD_OVERRIDE_MAP[descriptor.type];
   if (grandchildMapping) {
-    return applyGrandchildOverride(descriptor, json, overrides, grandchildMapping);
+    const parentSection = resolveSection(overrides, grandchildMapping.parentSection, descriptor.workspace);
+    if (!parentSection) return { ...json };
+    return applyGrandchildOverride(descriptor, json, parentSection, grandchildMapping);
   }
 
   return { ...json };
+}
+
+/**
+ * Resolve the override section to search for a given section key, honoring workspace scoping.
+ * Workspace-scoped resources are strictly isolated: they only read from
+ * `overrides.workspaces[workspace].children[sectionKey]`, never the top-level section.
+ */
+function resolveSection(
+  overrides: OverrideConfig,
+  sectionKey: OverrideSectionKey,
+  workspace: string | undefined
+): OverrideSection | undefined {
+  if (!workspace) {
+    return overrides[sectionKey];
+  }
+
+  const workspacesSection = overrides.workspaces;
+  if (!workspacesSection) return undefined;
+
+  const workspaceEntry = findEntryByName(workspacesSection, workspace);
+  if (!workspaceEntry?.children) return undefined;
+
+  return workspaceEntry.children[sectionKey];
 }
 
 /**
@@ -172,12 +199,9 @@ function applyFromSection(
 function applyNestedOverride(
   descriptor: ResourceDescriptor,
   json: Record<string, unknown>,
-  overrides: OverrideConfig,
+  parentSection: OverrideSection,
   mapping: { parentSection: OverrideSectionKey; childKey: string }
 ): Record<string, unknown> {
-  const parentSection = overrides[mapping.parentSection];
-  if (!parentSection) return { ...json };
-
   const parentName = descriptor.nameParts[0];
   if (!parentName) return { ...json };
 
@@ -220,12 +244,9 @@ function applyNestedOverride(
 function applyGrandchildOverride(
   descriptor: ResourceDescriptor,
   json: Record<string, unknown>,
-  overrides: OverrideConfig,
+  parentSection: OverrideSection,
   mapping: { parentSection: OverrideSectionKey; childKey: string; grandchildKey: string }
 ): Record<string, unknown> {
-  const parentSection = overrides[mapping.parentSection];
-  if (!parentSection) return { ...json };
-
   const parentName = descriptor.nameParts[0];
   if (!parentName) return { ...json };
 

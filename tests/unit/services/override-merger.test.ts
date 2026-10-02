@@ -655,4 +655,229 @@ describe('override-merger', () => {
       expect(result.properties).toHaveProperty('isCurrent', true);
     });
   });
+
+  describe('workspace-scoped overrides', () => {
+    it('should apply a direct override for a workspace-scoped API', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['my-api'],
+        workspace: 'ws1',
+      };
+      const json = { name: 'my-api', properties: { serviceUrl: 'https://dev.example.com' } };
+      const overrideConfig: OverrideConfig = {
+        workspaces: {
+          ws1: {
+            properties: {},
+            children: {
+              apis: {
+                'my-api': {
+                  properties: { serviceUrl: 'https://prod.example.com' },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result.properties).toHaveProperty('serviceUrl', 'https://prod.example.com');
+    });
+
+    it('should apply a direct override for a workspace-scoped backend', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Backend,
+        nameParts: ['orders-backend'],
+        workspace: 'partner-workspace',
+      };
+      const json = { name: 'orders-backend', properties: { url: 'https://orders-dev.example.com' } };
+      const overrideConfig: OverrideConfig = {
+        workspaces: {
+          'partner-workspace': {
+            properties: {},
+            children: {
+              backends: {
+                'orders-backend': {
+                  properties: { url: 'https://orders-prod.example.com' },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result.properties).toHaveProperty('url', 'https://orders-prod.example.com');
+    });
+
+    it('should use the override from the matching workspace when multiple workspaces define the same resource name', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['my-api'],
+        workspace: 'ws2',
+      };
+      const json = { name: 'my-api', properties: { serviceUrl: 'https://dev.example.com' } };
+      const overrideConfig: OverrideConfig = {
+        workspaces: {
+          ws1: {
+            properties: {},
+            children: {
+              apis: {
+                'my-api': {
+                  properties: { serviceUrl: 'https://ws1.example.com' },
+                },
+              },
+            },
+          },
+          ws2: {
+            properties: {},
+            children: {
+              apis: {
+                'my-api': {
+                  properties: { serviceUrl: 'https://ws2.example.com' },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result.properties).toHaveProperty('serviceUrl', 'https://ws2.example.com');
+    });
+
+    it('should apply a nested override for a workspace-scoped API diagnostic', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.ApiDiagnostic,
+        nameParts: ['my-api', 'applicationinsights'],
+        workspace: 'ws1',
+      };
+      const json = { name: 'applicationinsights', properties: { loggerId: '/old-logger' } };
+      const overrideConfig: OverrideConfig = {
+        workspaces: {
+          ws1: {
+            properties: {},
+            children: {
+              apis: {
+                'my-api': {
+                  properties: {},
+                  children: {
+                    diagnostics: {
+                      applicationinsights: {
+                        properties: { loggerId: '/new-logger' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result.properties).toHaveProperty('loggerId', '/new-logger');
+    });
+
+    it('should apply a grandchild override for a workspace-scoped API operation policy', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.ApiOperationPolicy,
+        nameParts: ['my-api', 'get-pets'],
+        workspace: 'ws1',
+      };
+      const json = { name: 'policy', properties: { format: 'xml' } };
+      const overrideConfig: OverrideConfig = {
+        workspaces: {
+          ws1: {
+            properties: {},
+            children: {
+              apis: {
+                'my-api': {
+                  properties: {},
+                  children: {
+                    operations: {
+                      'get-pets': {
+                        properties: {},
+                        children: {
+                          policies: {
+                            policy: { properties: { format: 'rawxml' } },
+                          },
+                        },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result.properties).toHaveProperty('format', 'rawxml');
+    });
+
+    it('should not leak a top-level override into a workspace-scoped resource', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['my-api'],
+        workspace: 'ws1',
+      };
+      const json = { name: 'my-api', properties: { serviceUrl: 'https://dev.example.com' } };
+      // Same resource name is overridden at the top level, but no workspace-scoped override exists.
+      const overrideConfig: OverrideConfig = {
+        apis: {
+          'my-api': {
+            properties: { serviceUrl: 'https://should-not-apply.example.com' },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result).toEqual(json);
+    });
+
+    it('should still apply workspace container property overrides (no workspace field on descriptor)', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Workspace,
+        nameParts: ['ws1'],
+      };
+      const json = { name: 'ws1', properties: { displayName: 'Dev Workspace' } };
+      const overrideConfig: OverrideConfig = {
+        workspaces: {
+          ws1: {
+            properties: { displayName: 'Prod Workspace' },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result.properties).toHaveProperty('displayName', 'Prod Workspace');
+    });
+
+    it('should match workspace names case-insensitively', () => {
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['my-api'],
+        workspace: 'ws1',
+      };
+      const json = { name: 'my-api', properties: { serviceUrl: 'https://dev.example.com' } };
+      const overrideConfig: OverrideConfig = {
+        workspaces: {
+          WS1: {
+            properties: {},
+            children: {
+              apis: {
+                'my-api': {
+                  properties: { serviceUrl: 'https://prod.example.com' },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const result = applyOverrides(descriptor, json, overrideConfig);
+      expect(result.properties).toHaveProperty('serviceUrl', 'https://prod.example.com');
+    });
+  });
 });
