@@ -65,10 +65,16 @@ const GRANDCHILD_OVERRIDE_MAP: Partial<Record<ResourceType, {
  * Check whether a named value has an explicit override entry.
  * Uses case-insensitive matching to align with override-merger behavior.
  */
-export function hasNamedValueOverride(name: string, overrides?: OverrideConfig): boolean {
-  if (!overrides?.namedValues) return false;
+export function hasNamedValueOverride(
+  name: string,
+  overrides?: OverrideConfig,
+  workspace?: string
+): boolean {
+  if (!overrides) return false;
+  const namedValues = resolveSection(overrides, 'namedValues', workspace);
+  if (!namedValues) return false;
   const lowerName = name.toLowerCase();
-  return Object.keys(overrides.namedValues).some(
+  return Object.keys(namedValues).some(
     (key) => key.toLowerCase() === lowerName
   );
 }
