@@ -2034,6 +2034,63 @@ describe('resource-publisher', () => {
       expect(creds.instrumentationKey).toBe('{{Logger-Credentials--abc123}}');
     });
 
+    it('should keep an explicit workspace named-value displayName unprefixed in logger credentials', async () => {
+      const client = createMockClient();
+      const store = createMockStore();
+      const loggerJson = {
+        name: 'workspace-logger',
+        properties: {
+          loggerType: 'applicationInsights',
+          credentials: { instrumentationKey: '{{api-key}}' },
+        },
+      };
+      store.readResource.mockImplementation(async (_dir: string, descriptor: ResourceDescriptor) => {
+        if (descriptor.type === ResourceType.Logger) return loggerJson;
+        if (descriptor.type === ResourceType.NamedValue && descriptor.nameParts[0] === 'api-key') {
+          return {
+            name: 'api-key',
+            properties: { displayName: 'api-key', secret: true },
+          };
+        }
+        return null;
+      });
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Logger,
+        nameParts: ['workspace-logger'],
+        workspace: 'team-a',
+      };
+      const config: PublishConfig = {
+        ...testConfig,
+        envMapping: {
+          prefix: 'dev-',
+          suffix: '',
+          appliesTo: new Set([ResourceType.NamedValue]),
+        },
+        overrides: {
+          workspaces: {
+            'team-a': {
+              properties: {},
+              children: {
+                namedValues: {
+                  'api-key': {
+                    properties: { displayName: 'workspace-api-key' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      const result = await publishResource(client, store, testContext, descriptor, config);
+
+      expect(result.status).toBe('success');
+      const putJson = client.putResource.mock.calls[0]?.[2] as Record<string, unknown>;
+      const properties = putJson.properties as Record<string, unknown>;
+      const credentials = properties.credentials as Record<string, unknown>;
+      expect(credentials.instrumentationKey).toBe('{{workspace-api-key}}');
+    });
+
     it('should not rewrite credentials for non-Logger resources', async () => {
       const client = createMockClient();
       const store = createMockStore();
