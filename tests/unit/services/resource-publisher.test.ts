@@ -324,6 +324,106 @@ describe('resource-publisher', () => {
       );
     });
 
+    it('should honor workspace API auth and path overrides during post-processing', async () => {
+      const client = createMockClient();
+      const store = createMockStore();
+      store.readResource.mockResolvedValue({
+        name: 'orders-api',
+        properties: {
+          path: 'orders',
+          authenticationSettings: {
+            oAuth2: { authorizationServerId: 'workspace-server' },
+            oAuth2AuthenticationSettings: [{ authorizationServerId: 'artifact-server' }],
+          },
+        },
+      });
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.Api,
+        nameParts: ['orders-api'],
+        workspace: 'team-a',
+      };
+      const config: PublishConfig = {
+        ...testConfig,
+        envMapping: {
+          prefix: 'dev-',
+          suffix: '',
+          apiPathPrefix: 'dev/',
+          appliesTo: new Set([ResourceType.Api]),
+        },
+        overrides: {
+          workspaces: {
+            'team-a': {
+              properties: {},
+              children: {
+                apis: {
+                  'orders-api': {
+                    properties: {
+                      path: 'workspace/orders',
+                      authenticationSettings: {
+                        oAuth2: { authorizationServerId: 'workspace-server' },
+                      },
+                    },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      await publishResource(client, store, testContext, descriptor, config);
+
+      const putJson = client.putResource.mock.calls[0]?.[2] as Record<string, unknown>;
+      const properties = putJson.properties as Record<string, unknown>;
+      expect(properties.path).toBe('workspace/orders');
+      expect(properties.authenticationSettings).toEqual({
+        oAuth2: { authorizationServerId: 'workspace-server' },
+      });
+    });
+
+    it('should preserve an explicit workspace named-value displayName with environment affixes', async () => {
+      const client = createMockClient();
+      const store = createMockStore();
+      store.readResource.mockResolvedValue({
+        name: 'api-key',
+        properties: { displayName: 'api-key', value: 'test-value' },
+      });
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.NamedValue,
+        nameParts: ['api-key'],
+        workspace: 'team-a',
+      };
+      const config: PublishConfig = {
+        ...testConfig,
+        envMapping: {
+          prefix: 'dev-',
+          suffix: '',
+          appliesTo: new Set([ResourceType.NamedValue]),
+        },
+        overrides: {
+          workspaces: {
+            'team-a': {
+              properties: {},
+              children: {
+                namedValues: {
+                  'api-key': {
+                    properties: { displayName: 'workspace-api-key' },
+                  },
+                },
+              },
+            },
+          },
+        },
+      };
+
+      await publishResource(client, store, testContext, descriptor, config);
+
+      const putJson = client.putResource.mock.calls[0]?.[2] as Record<string, unknown>;
+      const properties = putJson.properties as Record<string, unknown>;
+      expect(properties.displayName).toBe('workspace-api-key');
+      expect(client.putResource.mock.calls[0]?.[1].nameParts).toEqual(['dev-api-key']);
+    });
+
     it('should preserve opaque JSON properties', async () => {
       const client = createMockClient();
       const store = createMockStore();
