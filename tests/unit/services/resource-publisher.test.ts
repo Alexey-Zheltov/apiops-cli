@@ -10,6 +10,7 @@ import {
   resolveAssociationDeleteDescriptor,
   normalizeApiAuthenticationSettings,
   normalizeDiagnosticLoggerId,
+  stripTagDescriptionTagId,
   prefersLegacyAuthOverride,
 } from '../../../src/services/resource-publisher.js';
 import { ResourceType } from '../../../src/models/resource-types.js';
@@ -2066,6 +2067,37 @@ describe('resource-publisher', () => {
       expect((result.properties as Record<string, unknown>).loggerId).toBe(
         '/subscriptions/sub-1/resourceGroups/rg-1/providers/Microsoft.ApiManagement/service/apim-1/workspaces/ws-1/loggers/my-logger'
       );
+    });
+  });
+
+  describe('stripTagDescriptionTagId', () => {
+    it('drops the source-service tagId from the payload', () => {
+      const json = {
+        name: 'billing-tag',
+        properties: {
+          tagId:
+            '/subscriptions/src-sub/resourceGroups/src-rg/providers/Microsoft.ApiManagement/service/src-svc/tags/billing-tag',
+          displayName: 'Billing Tag',
+          description: 'Operations related to billing.',
+        },
+      };
+
+      const result = stripTagDescriptionTagId(json);
+
+      const props = result.properties as Record<string, unknown>;
+      expect(props).not.toHaveProperty('tagId');
+      expect(props.displayName).toBe('Billing Tag');
+      expect(props.description).toBe('Operations related to billing.');
+    });
+
+    it('returns json unchanged when tagId is absent', () => {
+      const json = { name: 'tag-desc', properties: { description: 'd' } };
+      expect(stripTagDescriptionTagId(json)).toBe(json);
+    });
+
+    it('returns json unchanged when properties is missing', () => {
+      const json = { name: 'tag-desc' };
+      expect(stripTagDescriptionTagId(json)).toBe(json);
     });
   });
 
