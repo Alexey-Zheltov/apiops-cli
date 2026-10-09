@@ -2099,6 +2099,35 @@ describe('resource-publisher', () => {
       const json = { name: 'tag-desc' };
       expect(stripTagDescriptionTagId(json)).toBe(json);
     });
+
+    it('publishResource strips tagId from the ApiTagDescription PUT payload', async () => {
+      const client = createMockClient();
+      const store = createMockStore();
+      store.readResource.mockResolvedValue({
+        name: 'billing-tag',
+        properties: {
+          tagId:
+            '/subscriptions/src-sub/resourceGroups/src-rg/providers/Microsoft.ApiManagement/service/src-svc/tags/billing-tag',
+          displayName: 'Billing Tag',
+          description: 'Operations related to billing.',
+        },
+      });
+
+      const descriptor: ResourceDescriptor = {
+        type: ResourceType.ApiTagDescription,
+        nameParts: ['orders-api', 'billing-tag'],
+      };
+
+      const result = await publishResource(client, store, testContext, descriptor, testConfig);
+
+      expect(result.status).toBe('success');
+      expect(client.putResource).toHaveBeenCalledTimes(1);
+      const putPayload = client.putResource.mock.calls[0][2] as Record<string, unknown>;
+      const props = putPayload.properties as Record<string, unknown>;
+      expect(props).not.toHaveProperty('tagId');
+      expect(props.displayName).toBe('Billing Tag');
+      expect(props.description).toBe('Operations related to billing.');
+    });
   });
 
   describe('normalizeApiAuthenticationSettings', () => {
