@@ -1717,6 +1717,26 @@ describe('resource-publisher', () => {
         expect(result.status).toBe('success');
         expect(client.putResource).toHaveBeenCalledTimes(1);
       });
+
+      it('reports a parent API artifact read error as a failure instead of PUTting the operation', async () => {
+        const client = createMockClient();
+        const store = createMockStore();
+        const readError = new Error('Unexpected token in apiInformation.json');
+        store.readResource.mockImplementation(async (_dir: string, d: ResourceDescriptor) => {
+          if (d.type === ResourceType.Api) throw readError;
+          return onHandshakeJson;
+        });
+
+        const descriptor: ResourceDescriptor = {
+          type: ResourceType.ApiOperation,
+          nameParts: ['notification-socket', 'onHandshake'],
+        };
+
+        const result = await publishResource(client, store, testContext, descriptor, testConfig);
+
+        expect(result).toMatchObject({ status: 'failed', action: 'noop', error: readError });
+        expect(client.putResource).not.toHaveBeenCalled();
+      });
     });
 
     describe('API revision handling', () => {

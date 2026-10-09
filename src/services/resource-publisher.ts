@@ -1517,12 +1517,10 @@ async function isWebSocketApiOperation(
     nameParts: [getNamePart(descriptor.nameParts, 0)],
     workspace: descriptor.workspace,
   };
-  let apiJson: Record<string, unknown> | undefined;
-  try {
-    apiJson = await store.readResource(config.sourceDir, apiDescriptor);
-  } catch {
-    return false;
-  }
+  // readResource returns undefined for a missing file; any other error (e.g.
+  // malformed JSON) must surface as a publish failure rather than fall through
+  // to a PUT that APIM would reject.
+  const apiJson = await store.readResource(config.sourceDir, apiDescriptor);
   if (!apiJson) {
     return false;
   }
