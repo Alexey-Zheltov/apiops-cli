@@ -325,10 +325,10 @@ export async function publishResource(
       // urlTemplate ('urlTemplate' should not be empty) and refuses user-defined
       // operations ("Operation entity cannot be defined by user for web socket api
       // type"), so the operation is never published — only its policy is (#317).
-      if (await isWebSocketApiOperation(store, descriptor, config)) {
+      const eligibility = await evaluateResourceEligibility(store, descriptor, config);
+      if (!eligibility.eligible) {
         logger.info(
-          `Skipping operation "${descriptor.nameParts.join('/')}": ` +
-          `WebSocket API operations are managed by APIM and cannot be published.`
+          `Skipping operation "${descriptor.nameParts.join('/')}": ${eligibility.reason}`
         );
         return {
           descriptor,
@@ -899,6 +899,15 @@ export async function evaluateResourceEligibility(
       workspace: descriptor.workspace,
     };
     return evaluateAssociationEligibility(store, target, config);
+  }
+
+  if (descriptor.type === ResourceType.ApiOperation) {
+    return (await isWebSocketApiOperation(store, descriptor, config))
+      ? {
+          eligible: false,
+          reason: 'WebSocket API operations are managed by APIM and cannot be published',
+        }
+      : { eligible: true };
   }
 
   if (descriptor.type !== ResourceType.Subscription || !json) {
