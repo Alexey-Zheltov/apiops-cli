@@ -100,6 +100,7 @@ export async function extractTransitiveDependencies(
   serviceContext?: ApimServiceContext
 ): Promise<TransitiveExtractionResult> {
   const attempted = new Set(alreadyExtracted.map(getResourceDescriptorKey));
+  const claimedNamedValues = new Set(alreadyExtracted.map(getResourceDescriptorKey));
   const extractedDescriptors: ResourceDescriptor[] = [];
   const namedValueIndex: NamedValueNameIndex = new Map();
   let errorCount = 0;
@@ -133,13 +134,11 @@ export async function extractTransitiveDependencies(
         let target = dep;
         if (dep.type === ResourceType.NamedValue) {
           target = await resolveNamedValueDescriptor(client, dependencyContext, dep, namedValueIndex);
-          if (target !== dep) {
-            const targetKey = getResourceDescriptorKey(target);
-            if (attempted.has(targetKey)) {
-              return { dep: target, skipped: true };
-            }
-            attempted.add(targetKey);
+          const targetKey = getResourceDescriptorKey(target);
+          if (claimedNamedValues.has(targetKey)) {
+            return { dep: target, skipped: true };
           }
+          claimedNamedValues.add(targetKey);
         }
         const json = await client.getResource(dependencyContext, target);
         if (json) {

@@ -136,6 +136,30 @@ describe('transitive-extractor', () => {
       expect(namedValueLists).toHaveLength(1);
     });
 
+    it('should extract each resolved resource when a resource name is also another display name', async () => {
+      const client = createMockClient();
+      client.listResources = namedValueList(
+        { name: 'one', displayName: 'two' },
+        { name: 'two', displayName: 'three' },
+      );
+      client.getResource.mockImplementation(async (_ctx, descriptor: ResourceDescriptor) => ({
+        name: descriptor.nameParts[0],
+        properties: {},
+      }));
+      const store = createMockStore();
+
+      const result = await extractTransitiveDependencies(
+        client, store, testContext, '/output', policiesWith('two', 'three'), new Map(), [], []
+      );
+
+      expect(result.errorCount).toBe(0);
+      expect(result.extractedDescriptors.map((descriptor) => descriptor.nameParts[0]).sort()).toEqual([
+        'one',
+        'two',
+      ]);
+      expect(client.getResource).toHaveBeenCalledTimes(2);
+    });
+
     it('should not re-extract or count an error when the resolved name was already extracted', async () => {
       const client = createMockClient();
       client.listResources = namedValueList({ name: 'nv-resource', displayName: 'nv_display' });
