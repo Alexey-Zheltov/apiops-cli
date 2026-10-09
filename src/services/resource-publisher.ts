@@ -320,6 +320,22 @@ export async function publishResource(
     // APIM may synthesize description from displayName when description is absent,
     // causing extract/publish round-trip drift.
     if (descriptor.type === ResourceType.ApiOperation) {
+      // WebSocket APIs own a single system-managed `onHandshake` operation with an
+      // empty urlTemplate. APIM rejects any user PUT/PATCH that carries the empty
+      // urlTemplate ('urlTemplate' should not be empty) and refuses user-defined
+      // operations ("Operation entity cannot be defined by user for web socket api
+      // type"), so the operation is never published — only its policy is (#317).
+      if (await isWebSocketApiOperation(store, descriptor, config)) {
+        logger.info(
+          `Skipping operation "${descriptor.nameParts.join('/')}": ` +
+          `WebSocket API operations are managed by APIM and cannot be published.`
+        );
+        return {
+          descriptor,
+          status: 'skipped',
+          action: 'noop',
+        };
+      }
       json = normalizeApiOperationTextFields(json);
     }
 
@@ -1485,6 +1501,34 @@ export function normalizeMcpToolOperationIds(
       mcpTools: normalizedTools,
     },
   };
+}
+
+/**
+ * True when the operation's parent API artifact (with overrides applied)
+ * declares `properties.type === 'websocket'`.
+ */
+async function isWebSocketApiOperation(
+  store: IArtifactStore,
+  descriptor: ResourceDescriptor,
+  config: PublishConfig
+): Promise<boolean> {
+  const apiDescriptor: ResourceDescriptor = {
+    type: ResourceType.Api,
+    nameParts: [getNamePart(descriptor.nameParts, 0)],
+    workspace: descriptor.workspace,
+  };
+  let apiJson: Record<string, unknown> | undefined;
+  try {
+    apiJson = await store.readResource(config.sourceDir, apiDescriptor);
+  } catch {
+    return false;
+  }
+  if (!apiJson) {
+    return false;
+  }
+  const merged = applyOverrides(apiDescriptor, apiJson, config.overrides);
+  const apiType = (merged.properties as Record<string, unknown> | undefined)?.type;
+  return typeof apiType === 'string' && apiType.toLowerCase() === 'websocket';
 }
 
 function normalizeApiOperationTextFields(
